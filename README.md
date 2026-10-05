@@ -10,7 +10,22 @@ The application does **not** include or distribute Sony BIOS files or game image
 
 ## v0.5 — PS1 + PS2
 
-v0.5 turns the old PS2-only project into a multi-console PlayStation setup utility.
+v0.5 turns the old PS2-only project into a multi-console PlayStation setup utility and adds the first real "finished app" polish pass.
+
+### Finished-app polish
+
+- Persistent **French / English** language switcher.
+- First-run onboarding rewritten around three simple steps: console → BIOS → emulator.
+- Custom **PS-EM application / installer icon** generated at build time with pure Node.
+- Improved Windows controller detection with device classification (Xbox/XInput, DualShock, DualSense, 8BitDo, GameSir, Nintendo, generic) and USB/Bluetooth hints.
+- Native confirmation dialogs are localized in FR/EN.
+- Safer PCSX2 auto-configuration:
+  - detects `PCSX2.ini`;
+  - refuses to edit while PCSX2 is running;
+  - creates a timestamped backup before changes;
+  - adds `Documents\Jeux PS2` to the recursive game list;
+  - fills missing BIOS folder/selection defaults when a verified BIOS is available;
+  - preserves existing custom BIOS choices.
 
 ### PlayStation (PS1)
 
