@@ -11,11 +11,15 @@
     "dev": "electron .",
     "check": "node --check src/main/system.js && node --check src/main/main.js && node --check src/main/preload.js && node --check src/renderer/app.js",
     "build": "electron-builder --win nsis --publish never",
-    "build:dir": "electron-builder --dir"
+    "build:dir": "electron-builder --dir",
+    "prestart": "node scripts/generate-icons.js",
+    "prebuild": "node scripts/generate-icons.js"
   },
   "devDependencies": {
     "electron": "^42.11.4",
-    "electron-builder": "26.15.3"
+    "electron-builder": "26.15.3",
+    "sharp": "^0.34.4",
+    "png-to-ico": "^3.0.1"
   },
   "overrides": {
     "yauzl": "^3.3.1"
@@ -30,6 +34,7 @@
     },
     "files": [
       "src/**/*",
+      "build/**/*",
       "package.json",
       "LICENSE"
     ],
@@ -41,14 +46,18 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "PS-EM EasySetup"
+      "shortcutName": "PS-EM EasySetup",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     }
   }
 }
