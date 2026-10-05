@@ -1,6 +1,6 @@
 {
   "name": "ps2-em-easysetup",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Guided Windows setup assistant for dumping a PS2 BIOS and configuring PCSX2.",
   "main": "src/main/main.js",
   "author": "STAELH81",
@@ -9,12 +9,46 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "check": "node --check src/main/system.js && node --check src/main/main.js && node --check src/main/preload.js && node --check src/renderer/app.js"
+    "check": "node --check src/main/system.js && node --check src/main/main.js && node --check src/main/preload.js && node --check src/renderer/app.js",
+    "build": "electron-builder --win nsis",
+    "build:dir": "electron-builder --dir"
   },
   "devDependencies": {
-    "electron": "^42.11.4"
+    "electron": "^42.11.4",
+    "electron-builder": "26.15.3"
   },
   "overrides": {
     "yauzl": "^3.3.1"
+  },
+  "productName": "PS2-EM EasySetup",
+  "build": {
+    "appId": "com.staelh81.ps2emeasysetup",
+    "productName": "PS2-EM EasySetup",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PS2-EM EasySetup"
+    }
   }
 }
