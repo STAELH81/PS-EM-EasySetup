@@ -11,6 +11,9 @@
     "dev": "electron ."
   },
   "devDependencies": {
-    "electron": "^38.0.0"
+    "electron": "^42.11.4"
+  },
+  "overrides": {
+    "yauzl": "^3.3.1"
   }
 }
