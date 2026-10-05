@@ -189,7 +189,31 @@
     'Choose your console': 'Choisis ta console',
     'Validate your own BIOS': 'Valide ton propre BIOS',
     'Prepare the emulator': 'Prépare l’émulateur',
-    'No uploads. No bundled BIOS. No destructive formatting.': 'Aucun envoi. Aucun BIOS inclus. Aucun formatage destructif.'
+    'No uploads. No bundled BIOS. No destructive formatting.': 'Aucun envoi. Aucun BIOS inclus. Aucun formatage destructif.',
+    'PS-EM guides you from your own BIOS to a clean PS1 or PS2 emulator setup, while keeping every sensitive file local.': 'PS-EM te guide de ton propre BIOS jusqu’à un setup PS1 ou PS2 propre, tout en gardant chaque fichier sensible en local.',
+    'PlayStation or PlayStation 2.': 'PlayStation ou PlayStation 2.',
+    'Everything stays local on your PC.': 'Tout reste local sur ton PC.',
+    'Folders, game library and controller checks.': 'Dossiers, bibliothèque de jeux et vérification des manettes.',
+    'PCSX2 CONFIG': 'CONFIG PCSX2',
+    'Checking PCSX2 game-list configuration…': 'Vérification de la bibliothèque de jeux PCSX2…',
+    'Configuration cancelled.': 'Configuration annulée.',
+    'PCSX2 already scans Jeux PS2.': 'PCSX2 analyse déjà Jeux PS2.',
+    'Close PCSX2 first, then try again.': 'Ferme d’abord PCSX2, puis réessaie.',
+    'Launch PCSX2 once and finish its first-run wizard, then Rescan.': 'Lance PCSX2 une fois, termine son assistant initial, puis relance le scan.',
+    'First launch still needed': 'Premier lancement encore nécessaire',
+    'WAITING': 'EN ATTENTE',
+    'PS-EM could not find PCSX2.ini yet. Launch PCSX2 once, finish the first-run wizard, close it, then press Rescan.': 'PS-EM ne trouve pas encore PCSX2.ini. Lance PCSX2 une fois, termine son assistant initial, ferme-le, puis clique sur Actualiser.',
+    'Jeux PS2 is already in the PCSX2 library': 'Jeux PS2 est déjà dans la bibliothèque PCSX2',
+    'Add Jeux PS2 to PCSX2 automatically': 'Ajouter Jeux PS2 à PCSX2 automatiquement',
+    'OPTIONAL': 'FACULTATIF',
+    'Configure automatically': 'Configurer automatiquement',
+    'Rescan config': 'Revérifier la config',
+    'PS-EM can safely add': 'PS-EM peut ajouter sans risque',
+    'as a recursive PCSX2 game-list path. A timestamped backup of PCSX2.ini is created before any change.': 'comme dossier récursif de jeux PCSX2. Une sauvegarde horodatée de PCSX2.ini est créée avant toute modification.',
+    'Generic Gamepad': 'Manette générique',
+    'Connected': 'Connectée',
+    'Bluetooth': 'Bluetooth',
+    'USB': 'USB'
   };
 
   const dictionaries = { en: {}, fr };
