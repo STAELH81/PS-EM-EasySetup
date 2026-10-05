@@ -163,7 +163,7 @@ async function detectUsbDrives() {
     "  }",
     "}",
     "$items | ConvertTo-Json -Compress"
-  ].join('; ');
+  ].join('\\n');
 
   try {
     const { stdout } = await execFileAsync(
