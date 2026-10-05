@@ -2,9 +2,7 @@ name: Syntax check
 
 on:
   pull_request:
-  push:
-    branches:
-      - v0.5-multiconsole
+  workflow_dispatch:
 
 jobs:
   check:
