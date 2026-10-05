@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('easySetup', {
   createGameFolder: () => ipcRenderer.invoke('create-game-folder'),
   copyBiosToPcsx2: (sourceFolder) => ipcRenderer.invoke('copy-bios-to-pcsx2', sourceFolder),
   detectControllers: () => ipcRenderer.invoke('detect-controllers'),
+  installPcsx2Winget: () => ipcRenderer.invoke('install-pcsx2-winget'),
+  prepareUsbBiosDrain: (root, forceReplace = false) => ipcRenderer.invoke('prepare-usb-biosdrain', root, forceReplace),
   openPath: (targetPath) => ipcRenderer.invoke('open-path', targetPath),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   platform: process.platform

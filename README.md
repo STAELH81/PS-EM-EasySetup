@@ -8,96 +8,93 @@ PS2-EM EasySetup is meant to take a beginner from “I want to emulate my PS2 ga
 
 The application does **not** include or distribute Sony BIOS files or game images.
 
-## v0.3 — PC-side automation
+## v0.4 — USB preparation + first Windows installer
 
-v0.3 keeps the real BIOS/USB inspection from v0.2 and starts preparing the Windows/PCSX2 side automatically.
+v0.4 pushes EasySetup closer to the original idea: launch one utility and let it handle the boring parts while keeping destructive operations out of the app.
 
-### PCSX2 detection
+### Prepare a PS2 USB with BIOSDrain
 
-EasySetup now:
+After selecting a removable drive, EasySetup can now:
 
-- Checks common PCSX2 installation locations.
-- Checks whether `pcsx2-qt.exe` is available through PATH.
-- Lets portable-build users locate the executable manually.
-- Can launch the detected PCSX2 executable directly.
+- Verify that Windows still sees it as removable.
+- Refuse to write if the drive is not FAT32.
+- Query the official `F0bes/biosdrain` GitHub release.
+- Download the latest official `biosdrain.elf`.
+- Compute a SHA-256 of the downloaded file.
+- Compare it with an existing `biosdrain.elf` on the USB.
+- Leave an existing different file untouched unless the user explicitly chooses replacement.
+- Back up a replaced file as `biosdrain.elf.bak`.
+- Never format the USB drive.
 
-### Workspace preparation
+The write action has its own confirmation dialog.
 
-EasySetup can now prepare the standard Documents-side workspace:
+### PCSX2 installation assistance
 
-- `Documents\PCSX2\bios`
-- `Documents\Jeux PS2`
+If PCSX2 is missing, EasySetup now checks whether Windows Package Manager is available.
 
-The user explicitly triggers every file-system change.
+When WinGet is available, the user can explicitly ask EasySetup to install:
 
-For the BIOS destination, EasySetup:
+```text
+PCSX2Team.PCSX2
+```
 
-- Re-validates the source BIOS before copying.
-- Creates the destination folder when needed.
-- Copies only the BIOS files found in the selected dump.
-- Skips same-size files that already exist.
-- Refuses to overwrite same-name files with a different size.
-- Re-scans the destination and only marks it ready if a usable ROM0 is present.
+EasySetup then rescans for PCSX2. Portable installations can still be located manually, and the official PCSX2 website remains available as a fallback.
 
-For the games folder, EasySetup can create `Documents\Jeux PS2` and open it in Explorer.
+### Existing PC-side automation
 
-### Controller scan
+v0.4 keeps the v0.3 features:
 
-On Windows, EasySetup now performs a best-effort controller scan using Windows device information and shows likely connected gamepads/controllers before the user enters PCSX2 controller mapping.
-
-Final button mapping remains inside PCSX2 because device APIs and mappings vary between controllers.
-
-### Final dashboard
-
-The completion screen now summarizes real state for:
-
-- Verified BIOS source.
-- Prepared PCSX2 BIOS destination.
-- PCSX2 detection.
-- Game-library folder.
+- PCSX2 detection and launching.
+- Verified BIOS copy to `Documents\PCSX2\bios`.
+- No overwrite of different same-name BIOS files.
+- Automatic creation of `Documents\Jeux PS2`.
 - Controller detection.
-- USB usage.
+- Final real-state dashboard.
 
-## Existing v0.2 features
+### First real Windows installer
 
-- BIOSDrain-style `.rom0`, `.rom1`, `.rom2`, `.nvm` and `.mec` validation.
-- SCPH model extraction from dump filenames.
-- ROM0 sanity checks.
-- Removable USB detection.
-- FAT32 / MBR detection.
-- `biosdrain.elf` detection.
-- BIOS detection at the USB root.
-- FreeMcBoot and FreeDVDBoot guided paths.
+The project now uses `electron-builder` with an NSIS target.
 
-## Run the prototype
+Local build:
 
-Requirements:
+```powershell
+npm install
+npm run build
+```
 
-- Windows
-- Node.js / npm
+Expected output:
+
+```text
+dist\PS2-EM EasySetup-Setup-0.4.0.exe
+```
+
+A GitHub Actions workflow also builds the Windows installer and uploads it as the `PS2-EM-EasySetup-Windows` workflow artifact.
+
+## Run from source
 
 ```powershell
 git fetch origin
-git checkout v0.3-pcsx2-setup
+git checkout v0.4-usb-packaging
 git pull
 npm install
 npm start
 ```
 
-> With recent Node versions, npm may ask you to approve Electron's install script. The repository pins a compatible `yauzl` override for the Electron installer path.
-
 ## Safety philosophy
 
-EasySetup should automate boring checks, not silently make destructive decisions.
+EasySetup automates boring checks, not destructive disk operations.
 
 Current rules:
 
 - No BIOS files are bundled.
 - No game images are bundled.
-- USB scanning is read-only.
 - USB formatting is never automatic.
+- BIOSDrain comes from its official GitHub release at runtime.
+- USB writes require an explicit user action and confirmation.
+- A conflicting `biosdrain.elf` is not overwritten without another explicit confirmation.
 - BIOS copies are user-triggered.
 - Existing same-name BIOS files with different sizes are not overwritten.
+- PCSX2 installation through WinGet requires confirmation.
 - FreeDVDBoot compatibility is not guessed.
 
 ## Project structure
@@ -118,12 +115,12 @@ src/
 
 Likely next steps:
 
-- More robust PCSX2 portable-install discovery.
-- Optional helper for adding the game folder inside PCSX2.
-- BIOSDrain copy/preparation helpers for the selected USB drive.
-- Windows installer / portable release packaging.
-- French/English language support.
-- Troubleshooting and recovery screens.
+- Download/progress UI rather than waiting on a single action.
+- More robust portable PCSX2 discovery.
+- Optional helper for PCSX2 game-library configuration.
+- French/English localization.
+- Custom application/installer icon.
+- Release automation with signed builds when the project is mature enough.
 
 ## License
 

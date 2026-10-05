@@ -8,7 +8,9 @@ const {
   getWorkspaceStatus,
   createGameFolder,
   copyBiosToPcsx2,
-  detectControllers
+  detectControllers,
+  installPcsx2WithWinget,
+  prepareUsbWithBiosDrain
 } = require('./system');
 
 function createWindow() {
@@ -78,6 +80,46 @@ ipcMain.handle('copy-bios-to-pcsx2', async (_event, sourceFolder) => {
 
 ipcMain.handle('detect-controllers', async () => {
   return detectControllers();
+});
+
+ipcMain.handle('install-pcsx2-winget', async (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const confirmation = await dialog.showMessageBox(owner, {
+    type: 'question',
+    buttons: ['Install PCSX2', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Install PCSX2 with WinGet',
+    message: 'Install PCSX2 using Windows Package Manager?',
+    detail: 'EasySetup will ask WinGet to install the official PCSX2 package (PCSX2Team.PCSX2). Windows may show an installer or UAC prompt.'
+  });
+
+  if (confirmation.response !== 0) {
+    return { ok: false, cancelled: true };
+  }
+
+  return installPcsx2WithWinget();
+});
+
+ipcMain.handle('prepare-usb-biosdrain', async (event, root, forceReplace = false) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const confirmation = await dialog.showMessageBox(owner, {
+    type: forceReplace ? 'warning' : 'question',
+    buttons: [forceReplace ? 'Replace BIOSDrain' : 'Prepare USB', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Prepare USB for BIOSDrain',
+    message: forceReplace ? `Replace biosdrain.elf on ${root}?` : `Copy official BIOSDrain to ${root}?`,
+    detail: forceReplace
+      ? 'The existing biosdrain.elf will be backed up as biosdrain.elf.bak before replacement. No other files are changed.'
+      : 'EasySetup will download BIOSDrain from its official GitHub release and copy biosdrain.elf to the selected removable FAT32 drive. The drive will not be formatted.'
+  });
+
+  if (confirmation.response !== 0) {
+    return { ok: false, cancelled: true };
+  }
+
+  return prepareUsbWithBiosDrain(root, Boolean(forceReplace));
 });
 
 ipcMain.handle('open-path', async (_event, targetPath) => {

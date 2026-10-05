@@ -1272,3 +1272,32 @@ h2 {
     justify-content: flex-start;
   }
 }
+
+
+/* v0.4 — USB preparation */
+
+.usb-prep-card {
+  margin-top: 14px;
+  border: 1px solid rgba(93, 134, 255, .28);
+  border-radius: 12px;
+  padding: 16px;
+  background:
+    linear-gradient(180deg, rgba(93, 134, 255, .055), rgba(18, 24, 34, .88));
+}
+
+.usb-prep-card p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+  margin-bottom: 0;
+}
+
+.usb-prep-card .operation-result small {
+  opacity: .78;
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.operation-result:not(.good):not(.bad) {
+  color: var(--muted);
+  background: rgba(255,255,255,.035);
+}
