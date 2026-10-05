@@ -975,8 +975,7 @@ async function getPcsx2ConfigStatus(documentsPath) {
 
     const biosFolderConfigured = Boolean(
       biosName &&
-      configuredBiosFolder &&
-      normalizeWindowsPath(configuredBiosFolder) === normalizeWindowsPath(biosPath)
+      (!configuredBiosFolder || normalizeWindowsPath(configuredBiosFolder) === normalizeWindowsPath(biosPath))
     );
 
     const biosSelectionConfigured = Boolean(
