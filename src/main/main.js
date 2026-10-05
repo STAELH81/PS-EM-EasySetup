@@ -1,12 +1,13 @@
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
+const { inspectBiosFolder, detectUsbDrives } = require('./system');
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1120,
-    height: 760,
-    minWidth: 920,
-    minHeight: 640,
+    width: 1180,
+    height: 800,
+    minWidth: 960,
+    minHeight: 660,
     backgroundColor: '#11141a',
     autoHideMenuBar: true,
     webPreferences: {
@@ -27,6 +28,14 @@ ipcMain.handle('select-folder', async (_event, title) => {
 
   if (result.canceled || !result.filePaths[0]) return null;
   return result.filePaths[0];
+});
+
+ipcMain.handle('inspect-bios-folder', async (_event, folderPath) => {
+  return inspectBiosFolder(folderPath);
+});
+
+ipcMain.handle('detect-usb-drives', async () => {
+  return detectUsbDrives();
 });
 
 ipcMain.handle('open-external', async (_event, url) => {
