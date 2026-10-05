@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - v0.3-pcsx2-setup
+      - v0.5-multiconsole
 
 jobs:
   check:
