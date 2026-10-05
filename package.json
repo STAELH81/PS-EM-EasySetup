@@ -1,7 +1,7 @@
 {
-  "name": "ps2-em-easysetup",
-  "version": "0.4.0",
-  "description": "Guided Windows setup assistant for dumping a PS2 BIOS and configuring PCSX2.",
+  "name": "ps-em-easysetup",
+  "version": "0.5.0",
+  "description": "Guided Windows setup assistant for PlayStation and PlayStation 2 emulation setup.",
   "main": "src/main/main.js",
   "author": "STAELH81",
   "license": "MIT",
@@ -20,10 +20,10 @@
   "overrides": {
     "yauzl": "^3.3.1"
   },
-  "productName": "PS2-EM EasySetup",
+  "productName": "PS-EM EasySetup",
   "build": {
-    "appId": "com.staelh81.ps2emeasysetup",
-    "productName": "PS2-EM EasySetup",
+    "appId": "com.staelh81.psemeasysetup",
+    "productName": "PS-EM EasySetup",
     "artifactName": "${productName}-Setup-${version}.${ext}",
     "directories": {
       "output": "dist"
@@ -48,7 +48,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "PS2-EM EasySetup"
+      "shortcutName": "PS-EM EasySetup"
     }
   }
 }
