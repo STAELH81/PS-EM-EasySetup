@@ -1381,3 +1381,130 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* v0.5 polish — language, onboarding, controller identity */
+
+.sidebar-tools {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.sidebar-tools > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.language-switcher {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  background: rgba(8, 12, 18, .7);
+  width: fit-content;
+}
+
+.language-switcher button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .05em;
+}
+
+.language-switcher button.active {
+  background: rgba(93, 134, 255, .16);
+  color: var(--accent-2);
+  box-shadow: inset 0 0 0 1px rgba(93, 134, 255, .28);
+}
+
+.language-switcher.large button {
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+.welcome-language {
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.welcome-language > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.onboarding-hero {
+  min-height: 330px;
+}
+
+.onboarding-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.onboarding-steps > div {
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 15px;
+  background: rgba(18, 24, 34, .78);
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  column-gap: 9px;
+  row-gap: 3px;
+}
+
+.onboarding-steps > div > span {
+  grid-row: 1 / span 2;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: var(--accent-2);
+  border: 1px solid rgba(93, 134, 255, .34);
+  background: rgba(93, 134, 255, .07);
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.onboarding-steps strong {
+  align-self: end;
+  font-size: 13px;
+}
+
+.onboarding-steps small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.controller-badges {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.setup-card code {
+  word-break: break-all;
+}
+
+@media (max-width: 900px) {
+  .onboarding-steps {
+    grid-template-columns: 1fr;
+  }
+}
