@@ -249,10 +249,10 @@ async function detectPcsx2() {
   const programFilesX86 = process.env['ProgramFiles(x86)'] || '';
 
   const candidates = [
-    path.join(localAppData, 'Programs', 'PCSX2', 'pcsx2-qt.exe'),
-    path.join(localAppData, 'PCSX2', 'pcsx2-qt.exe'),
-    path.join(programFiles, 'PCSX2', 'pcsx2-qt.exe'),
-    path.join(programFilesX86, 'PCSX2', 'pcsx2-qt.exe')
+    localAppData ? path.join(localAppData, 'Programs', 'PCSX2', 'pcsx2-qt.exe') : null,
+    localAppData ? path.join(localAppData, 'PCSX2', 'pcsx2-qt.exe') : null,
+    programFiles ? path.join(programFiles, 'PCSX2', 'pcsx2-qt.exe') : null,
+    programFilesX86 ? path.join(programFilesX86, 'PCSX2', 'pcsx2-qt.exe') : null
   ].filter(Boolean);
 
   try {
