@@ -1,13 +1,22 @@
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
-const { inspectBiosFolder, detectUsbDrives } = require('./system');
+const {
+  inspectBiosFolder,
+  detectUsbDrives,
+  detectPcsx2,
+  validatePcsx2Executable,
+  getWorkspaceStatus,
+  createGameFolder,
+  copyBiosToPcsx2,
+  detectControllers
+} = require('./system');
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1180,
-    height: 800,
-    minWidth: 960,
-    minHeight: 660,
+    width: 1220,
+    height: 840,
+    minWidth: 980,
+    minHeight: 680,
     backgroundColor: '#11141a',
     autoHideMenuBar: true,
     webPreferences: {
@@ -30,12 +39,50 @@ ipcMain.handle('select-folder', async (_event, title) => {
   return result.filePaths[0];
 });
 
+ipcMain.handle('select-pcsx2-exe', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Locate PCSX2',
+    properties: ['openFile'],
+    filters: [
+      { name: 'PCSX2 executable', extensions: ['exe'] }
+    ]
+  });
+
+  if (result.canceled || !result.filePaths[0]) return null;
+  return validatePcsx2Executable(result.filePaths[0]);
+});
+
 ipcMain.handle('inspect-bios-folder', async (_event, folderPath) => {
   return inspectBiosFolder(folderPath);
 });
 
 ipcMain.handle('detect-usb-drives', async () => {
   return detectUsbDrives();
+});
+
+ipcMain.handle('detect-pcsx2', async () => {
+  return detectPcsx2();
+});
+
+ipcMain.handle('workspace-status', async () => {
+  return getWorkspaceStatus(app.getPath('documents'));
+});
+
+ipcMain.handle('create-game-folder', async () => {
+  return createGameFolder(app.getPath('documents'));
+});
+
+ipcMain.handle('copy-bios-to-pcsx2', async (_event, sourceFolder) => {
+  return copyBiosToPcsx2(sourceFolder, app.getPath('documents'));
+});
+
+ipcMain.handle('detect-controllers', async () => {
+  return detectControllers();
+});
+
+ipcMain.handle('open-path', async (_event, targetPath) => {
+  if (!targetPath) return 'No path supplied.';
+  return shell.openPath(targetPath);
 });
 
 ipcMain.handle('open-external', async (_event, url) => {

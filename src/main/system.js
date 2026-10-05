@@ -23,6 +23,15 @@ function normalizeModel(stem) {
   return match ? `SCPH-${match[1]}` : stem;
 }
 
+async function exists(target) {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function inspectBiosFolder(folderPath) {
   if (!folderPath || typeof folderPath !== 'string') {
     return {
@@ -136,6 +145,20 @@ async function getDriveExtraInfo(root) {
   return result;
 }
 
+async function runPowerShell(script, timeout = 12000) {
+  const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
+
+  return execFileAsync(
+    'powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedScript],
+    {
+      windowsHide: true,
+      timeout,
+      maxBuffer: 1024 * 1024
+    }
+  );
+}
+
 async function detectUsbDrives() {
   if (process.platform !== 'win32') {
     return {
@@ -166,18 +189,7 @@ async function detectUsbDrives() {
   ].join('\n');
 
   try {
-    const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
-
-    const { stdout } = await execFileAsync(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedScript],
-      {
-        windowsHide: true,
-        timeout: 12000,
-        maxBuffer: 1024 * 1024
-      }
-    );
-
+    const { stdout } = await runPowerShell(script);
     const trimmed = stdout.trim();
     const parsed = trimmed ? JSON.parse(trimmed) : [];
     const items = Array.isArray(parsed) ? parsed : [parsed];
@@ -222,7 +234,254 @@ async function detectUsbDrives() {
   }
 }
 
+async function detectPcsx2() {
+  if (process.platform !== 'win32') {
+    return {
+      ok: true,
+      supported: false,
+      found: false,
+      installations: []
+    };
+  }
+
+  const localAppData = process.env.LOCALAPPDATA || '';
+  const programFiles = process.env.ProgramFiles || '';
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || '';
+
+  const candidates = [
+    localAppData ? path.join(localAppData, 'Programs', 'PCSX2', 'pcsx2-qt.exe') : null,
+    localAppData ? path.join(localAppData, 'PCSX2', 'pcsx2-qt.exe') : null,
+    programFiles ? path.join(programFiles, 'PCSX2', 'pcsx2-qt.exe') : null,
+    programFilesX86 ? path.join(programFilesX86, 'PCSX2', 'pcsx2-qt.exe') : null
+  ].filter(Boolean);
+
+  try {
+    const { stdout } = await execFileAsync('where.exe', ['pcsx2-qt.exe'], {
+      windowsHide: true,
+      timeout: 5000,
+      maxBuffer: 128 * 1024
+    });
+
+    for (const line of stdout.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)) {
+      candidates.push(line);
+    }
+  } catch {
+    // PCSX2 is commonly portable and therefore absent from PATH.
+  }
+
+  const installations = [];
+  const seen = new Set();
+
+  for (const candidate of candidates) {
+    const normalized = path.normalize(candidate);
+    const key = normalized.toLowerCase();
+    if (seen.has(key) || !(await exists(normalized))) continue;
+    seen.add(key);
+
+    installations.push({
+      path: normalized,
+      directory: path.dirname(normalized),
+      source: normalized.toLowerCase().includes('program files') ? 'installed' : 'detected'
+    });
+  }
+
+  return {
+    ok: true,
+    supported: true,
+    found: installations.length > 0,
+    installations
+  };
+}
+
+async function validatePcsx2Executable(executablePath) {
+  if (!executablePath || typeof executablePath !== 'string') {
+    return { ok: false, error: 'No executable selected.' };
+  }
+
+  const name = path.basename(executablePath).toLowerCase();
+  const looksLikePcsx2 = name === 'pcsx2-qt.exe' || /^pcsx2.*\.exe$/.test(name);
+
+  if (!(await exists(executablePath))) {
+    return { ok: false, error: 'The selected file no longer exists.' };
+  }
+
+  return {
+    ok: looksLikePcsx2,
+    path: executablePath,
+    directory: path.dirname(executablePath),
+    error: looksLikePcsx2 ? null : 'This executable does not look like PCSX2.'
+  };
+}
+
+async function getWorkspaceStatus(documentsPath) {
+  const gamesPath = path.join(documentsPath, 'Jeux PS2');
+  const pcsx2Documents = path.join(documentsPath, 'PCSX2');
+  const biosPath = path.join(pcsx2Documents, 'bios');
+
+  const biosExists = await exists(biosPath);
+  const biosScan = biosExists ? await inspectBiosFolder(biosPath) : null;
+  const biosReady = Boolean(biosScan?.best?.validForPcsx2);
+
+  return {
+    ok: true,
+    documentsPath,
+    gamesPath,
+    gamesExists: await exists(gamesPath),
+    pcsx2Documents,
+    pcsx2DocumentsExists: await exists(pcsx2Documents),
+    biosPath,
+    biosExists,
+    biosReady,
+    biosModel: biosScan?.best?.consoleModel || null
+  };
+}
+
+async function createGameFolder(documentsPath) {
+  const gamesPath = path.join(documentsPath, 'Jeux PS2');
+
+  try {
+    await fs.mkdir(gamesPath, { recursive: true });
+    return {
+      ok: true,
+      path: gamesPath,
+      created: true
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      path: gamesPath,
+      error: error?.message || 'Unable to create the games folder.'
+    };
+  }
+}
+
+async function copyBiosToPcsx2(sourceFolder, documentsPath) {
+  const scan = await inspectBiosFolder(sourceFolder);
+  const candidate = scan.best;
+
+  if (!scan.ok || !candidate?.validForPcsx2) {
+    return {
+      ok: false,
+      error: 'No usable PS2 BIOS was found in the selected source folder.'
+    };
+  }
+
+  const destination = path.join(documentsPath, 'PCSX2', 'bios');
+
+  try {
+    await fs.mkdir(destination, { recursive: true });
+
+    const copied = [];
+    const skipped = [];
+    const conflicts = [];
+
+    for (const part of BIOS_PARTS) {
+      const source = candidate.files[part];
+      if (!source) continue;
+
+      const target = path.join(destination, source.name);
+
+      if (path.resolve(source.path).toLowerCase() === path.resolve(target).toLowerCase()) {
+        skipped.push({ name: source.name, reason: 'already-in-place' });
+        continue;
+      }
+
+      if (await exists(target)) {
+        const targetStat = await fs.stat(target);
+
+        if (targetStat.size === source.size) {
+          skipped.push({ name: source.name, reason: 'same-size-file-exists' });
+        } else {
+          conflicts.push({
+            name: source.name,
+            sourceSize: source.size,
+            destinationSize: targetStat.size
+          });
+        }
+
+        continue;
+      }
+
+      await fs.copyFile(source.path, target);
+      copied.push(source.name);
+    }
+
+    return {
+      ok: conflicts.length === 0,
+      partial: conflicts.length > 0,
+      destination,
+      consoleModel: candidate.consoleModel,
+      copied,
+      skipped,
+      conflicts,
+      error: conflicts.length
+        ? 'Some BIOS filenames already exist with different sizes. EasySetup did not overwrite them.'
+        : null
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      destination,
+      error: error?.message || 'Unable to copy BIOS files.'
+    };
+  }
+}
+
+async function detectControllers() {
+  if (process.platform !== 'win32') {
+    return {
+      ok: true,
+      supported: false,
+      controllers: []
+    };
+  }
+
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$pattern = 'controller|gamepad|xbox|dualshock|dualsense|wireless controller|8bitdo|gamesir|pro controller'",
+    "$items = Get-CimInstance Win32_PnPEntity | Where-Object {",
+    "  $_.Name -and $_.Status -eq 'OK' -and $_.Name -match $pattern",
+    "} | Select-Object -Unique Name, Manufacturer, PNPClass, DeviceID",
+    "$items | ConvertTo-Json -Compress"
+  ].join('\n');
+
+  try {
+    const { stdout } = await runPowerShell(script, 15000);
+    const trimmed = stdout.trim();
+    const parsed = trimmed ? JSON.parse(trimmed) : [];
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+
+    const controllers = items
+      .filter((item) => item?.Name)
+      .map((item) => ({
+        name: String(item.Name || ''),
+        manufacturer: String(item.Manufacturer || ''),
+        pnpClass: String(item.PNPClass || ''),
+        deviceId: String(item.DeviceID || '')
+      }));
+
+    return {
+      ok: true,
+      supported: true,
+      controllers
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      supported: true,
+      controllers: [],
+      error: error?.message || 'Controller detection failed.'
+    };
+  }
+}
+
 module.exports = {
   inspectBiosFolder,
-  detectUsbDrives
+  detectUsbDrives,
+  detectPcsx2,
+  validatePcsx2Executable,
+  getWorkspaceStatus,
+  createGameFolder,
+  copyBiosToPcsx2,
+  detectControllers
 };

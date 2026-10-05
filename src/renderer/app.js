@@ -3,13 +3,16 @@ const state = {
   history: [],
   biosPath: '',
   biosScan: null,
-  usbScan: {
-    status: 'idle',
-    result: null
-  },
+  usbScan: { status: 'idle', result: null },
   selectedUsbRoot: '',
   ps2Model: '',
-  dvdVersion: ''
+  dvdVersion: '',
+  pcsx2Scan: { status: 'idle', result: null },
+  pcsx2Path: '',
+  workspace: { status: 'idle', result: null },
+  biosCopyResult: null,
+  gameFolderResult: null,
+  controllerScan: { status: 'idle', result: null }
 };
 
 const steps = [
@@ -74,9 +77,9 @@ function go(route) {
   state.route = route;
   render();
 
-  if (route === 'usb-detect' && state.usbScan.status === 'idle') {
-    refreshUsb();
-  }
+  if (route === 'usb-detect' && state.usbScan.status === 'idle') refreshUsb();
+  if (route === 'pcsx2' && state.pcsx2Scan.status === 'idle') refreshPcsx2Setup();
+  if (route === 'controller' && state.controllerScan.status === 'idle') refreshControllers();
 }
 
 function back() {
@@ -98,6 +101,10 @@ function choice(title, description, action, extraClass = '') {
 
 function statusPill(label, tone = 'neutral') {
   return `<span class="pill ${tone}">${label}</span>`;
+}
+
+function actionButton(label, action, kind = 'ghost', extra = '') {
+  return `<button class="button ${kind} ${extra}" data-action="${action}">${label}</button>`;
 }
 
 function renderBiosScan() {
@@ -125,10 +132,7 @@ function renderBiosScan() {
     return `
       <div class="status-card danger">
         <div class="status-icon">!</div>
-        <div>
-          <strong>Couldn't inspect this folder</strong>
-          <p>${escapeHtml(scan?.error || 'Unknown error')}</p>
-        </div>
+        <div><strong>Couldn't inspect this folder</strong><p>${escapeHtml(scan?.error || 'Unknown error')}</p></div>
       </div>
     `;
   }
@@ -198,16 +202,12 @@ function renderUsbDrives() {
     return `
       <div class="status-card danger">
         <div class="status-icon">!</div>
-        <div>
-          <strong>Automatic USB detection failed</strong>
-          <p>${escapeHtml(state.usbScan.result?.error || 'Unknown error')}</p>
-        </div>
+        <div><strong>Automatic USB detection failed</strong><p>${escapeHtml(state.usbScan.result?.error || 'Unknown error')}</p></div>
       </div>
     `;
   }
 
-  const result = state.usbScan.result;
-  const drives = result?.drives || [];
+  const drives = state.usbScan.result?.drives || [];
 
   if (state.usbScan.status === 'ready' && drives.length === 0) {
     return `
@@ -265,27 +265,193 @@ function selectedUsbNotice() {
   `;
 }
 
+function getDetectedPcsx2Path() {
+  return state.pcsx2Path || state.pcsx2Scan.result?.installations?.[0]?.path || '';
+}
+
+function renderPcsx2Detection() {
+  if (state.pcsx2Scan.status === 'scanning') {
+    return `
+      <div class="setup-tile scanning">
+        <div class="tile-icon"><div class="spinner mini-spinner"></div></div>
+        <div class="tile-main"><strong>Looking for PCSX2…</strong><span>Checking common install locations and PATH.</span></div>
+      </div>
+    `;
+  }
+
+  const pathValue = getDetectedPcsx2Path();
+
+  if (pathValue) {
+    return `
+      <div class="setup-tile good">
+        <div class="tile-icon">✓</div>
+        <div class="tile-main">
+          <div class="tile-title"><strong>PCSX2 detected</strong>${statusPill('READY', 'success')}</div>
+          <span class="mono-path">${escapeHtml(pathValue)}</span>
+        </div>
+        <div class="tile-actions">
+          ${actionButton('Launch', 'launch-pcsx2', 'ghost', 'compact')}
+          ${actionButton('Change', 'locate-pcsx2', 'ghost', 'compact')}
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="setup-tile attention">
+      <div class="tile-icon">!</div>
+      <div class="tile-main">
+        <div class="tile-title"><strong>PCSX2 not detected</strong>${statusPill('ACTION NEEDED', 'warning')}</div>
+        <span>If you use a portable build, EasySetup may not know where you extracted it.</span>
+      </div>
+      <div class="tile-actions">
+        ${actionButton('Locate', 'locate-pcsx2', 'ghost', 'compact')}
+        ${actionButton('Download', 'open-pcsx2', 'ghost', 'compact')}
+      </div>
+    </div>
+  `;
+}
+
+function renderWorkspace() {
+  if (state.workspace.status === 'scanning') {
+    return `
+      <div class="scanner-card">
+        <div class="spinner"></div>
+        <div><strong>Checking your Documents workspace…</strong><span>Looking for PCSX2 BIOS and game folders.</span></div>
+      </div>
+    `;
+  }
+
+  const ws = state.workspace.result;
+  if (!ws) {
+    return `<div class="empty-state"><div class="empty-icon">DIR</div><strong>Workspace not scanned yet.</strong></div>`;
+  }
+
+  const biosReady = Boolean(ws.biosReady);
+  const gamesReady = Boolean(ws.gamesExists);
+
+  const biosResult = state.biosCopyResult
+    ? state.biosCopyResult.ok
+      ? `<div class="operation-result good">✓ BIOS copy complete — ${state.biosCopyResult.copied.length} copied, ${state.biosCopyResult.skipped.length} already present.</div>`
+      : `<div class="operation-result bad">⚠ ${escapeHtml(state.biosCopyResult.error || 'BIOS copy needs attention.')}</div>`
+    : '';
+
+  const gameResult = state.gameFolderResult?.ok
+    ? `<div class="operation-result good">✓ Game folder ready.</div>`
+    : state.gameFolderResult?.error
+      ? `<div class="operation-result bad">⚠ ${escapeHtml(state.gameFolderResult.error)}</div>`
+      : '';
+
+  return `
+    <div class="setup-grid">
+      <div class="setup-card ${biosReady ? 'ready' : ''}">
+        <div class="setup-card-head">
+          <div>
+            <span class="eyebrow">BIOS DESTINATION</span>
+            <strong>${biosReady ? 'PCSX2 BIOS is ready' : 'Prepare PCSX2 BIOS folder'}</strong>
+          </div>
+          ${statusPill(biosReady ? 'READY' : 'NOT READY', biosReady ? 'success' : 'warning')}
+        </div>
+        <p>EasySetup uses <code>${escapeHtml(ws.biosPath)}</code> as the clean destination.</p>
+        <div class="inline-actions">
+          ${actionButton(biosReady ? 'Copy / verify again' : 'Copy my verified BIOS', 'copy-bios', biosReady ? 'ghost' : 'primary', 'compact')}
+          ${ws.biosExists ? actionButton('Open folder', 'open-bios-folder', 'ghost', 'compact') : ''}
+        </div>
+        ${biosResult}
+      </div>
+
+      <div class="setup-card ${gamesReady ? 'ready' : ''}">
+        <div class="setup-card-head">
+          <div>
+            <span class="eyebrow">GAME LIBRARY</span>
+            <strong>${gamesReady ? 'Game folder exists' : 'Create your PS2 game folder'}</strong>
+          </div>
+          ${statusPill(gamesReady ? 'READY' : 'NOT READY', gamesReady ? 'success' : 'warning')}
+        </div>
+        <p><code>${escapeHtml(ws.gamesPath)}</code></p>
+        <div class="inline-actions">
+          ${gamesReady
+            ? actionButton('Open folder', 'open-games-folder', 'ghost', 'compact')
+            : actionButton('Create automatically', 'create-games-folder', 'primary', 'compact')}
+        </div>
+        ${gameResult}
+      </div>
+    </div>
+  `;
+}
+
+function pcsx2Ready() {
+  const ws = state.workspace.result;
+  return Boolean(getDetectedPcsx2Path() && ws?.gamesExists && ws?.biosReady);
+}
+
+function renderControllers() {
+  if (state.controllerScan.status === 'scanning') {
+    return `
+      <div class="scanner-card">
+        <div class="spinner"></div>
+        <div><strong>Scanning connected controllers…</strong><span>Looking for gamepad/controller devices reported by Windows.</span></div>
+      </div>
+    `;
+  }
+
+  if (state.controllerScan.status === 'error') {
+    return `
+      <div class="status-card danger">
+        <div class="status-icon">!</div>
+        <div><strong>Controller scan failed</strong><p>${escapeHtml(state.controllerScan.result?.error || 'Unknown error')}</p></div>
+      </div>
+    `;
+  }
+
+  const controllers = state.controllerScan.result?.controllers || [];
+  if (!controllers.length) {
+    return `
+      <div class="empty-state">
+        <div class="empty-icon">PAD</div>
+        <strong>No obvious game controller detected.</strong>
+        <span>You can still continue. Some generic controllers do not expose a useful Windows device name, and PCSX2 can map keyboard input too.</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="controller-list">
+      ${controllers.map((controller, index) => `
+        <div class="controller-device">
+          <div class="controller-number">P${index + 1}</div>
+          <div>
+            <strong>${escapeHtml(controller.name)}</strong>
+            <span>${escapeHtml(controller.manufacturer || controller.pnpClass || 'Windows game controller')}</span>
+          </div>
+          ${statusPill('CONNECTED', 'success')}
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 const views = {
   welcome: () => ({
     html: `
       <div class="hero">
         <div>
-          <div class="kicker">PS2-EM EasySetup · v0.2</div>
-          <h2>From real PS2 to PCSX2.<br><span class="gradient-text">Without the nuclear reactor manual.</span></h2>
-          <p class="lead">EasySetup checks your BIOS files, finds removable USB drives, guides the correct dumping path, and walks you through a clean PCSX2 setup.</p>
+          <div class="kicker">PS2-EM EasySetup · v0.3</div>
+          <h2>From real PS2 to PCSX2.<br><span class="gradient-text">Now it actually prepares the PC too.</span></h2>
+          <p class="lead">Validate the BIOS, inspect the USB drive, detect PCSX2, prepare its folders, and check your controllers from one guided Windows utility.</p>
         </div>
         <div class="hero-orbit" aria-hidden="true">
           <span class="shape triangle">△</span>
           <span class="shape circle">○</span>
           <span class="shape cross">×</span>
           <span class="shape square">□</span>
-          <div class="hero-core">PS2<br><small>READY</small></div>
+          <div class="hero-core">PS2<br><small>SETUP</small></div>
         </div>
       </div>
       <div class="feature-grid">
-        <div class="feature"><strong>BIOS validator</strong><span>Recognises BIOSDrain sets and flags missing files.</span></div>
-        <div class="feature"><strong>USB scanner</strong><span>Detects removable drives, FAT32 and MBR status.</span></div>
-        <div class="feature"><strong>Safe by design</strong><span>No BIOS redistribution and no automatic disk formatting.</span></div>
+        <div class="feature"><strong>BIOS + USB</strong><span>Real validation and removable-drive inspection from v0.2.</span></div>
+        <div class="feature"><strong>PCSX2 setup</strong><span>Detect, locate, launch, copy BIOS and create the game library.</span></div>
+        <div class="feature"><strong>Controller scan</strong><span>See what Windows exposes before opening PCSX2 mapping.</span></div>
       </div>
     `,
     next: { label: 'Start EasySetup', onClick: () => go('bios-choice') }
@@ -310,7 +476,7 @@ const views = {
       html: `
         <div class="kicker">BIOS · Smart validation</div>
         <h2>Show me your BIOS folder.</h2>
-        <p class="lead">EasySetup now inspects the folder instead of blindly trusting that the right files are there.</p>
+        <p class="lead">EasySetup inspects the folder instead of blindly trusting that the right files are there.</p>
         <div class="path-box">
           <input value="${escapeHtml(state.biosPath)}" placeholder="No folder selected" readonly />
           <button class="button ghost" data-action="select-bios">Browse…</button>
@@ -415,14 +581,8 @@ const views = {
       <p class="lead">First identify the exact console and DVD Player version. FreeDVDBoot compatibility depends on those details.</p>
 
       <div class="field-grid">
-        <label>
-          <span>PS2 model</span>
-          <input id="ps2Model" value="${escapeHtml(state.ps2Model)}" placeholder="Example: SCPH-70004" />
-        </label>
-        <label>
-          <span>DVD Player version</span>
-          <input id="dvdVersion" value="${escapeHtml(state.dvdVersion)}" placeholder="Example: 3.10E" />
-        </label>
+        <label><span>PS2 model</span><input id="ps2Model" value="${escapeHtml(state.ps2Model)}" placeholder="Example: SCPH-70004" /></label>
+        <label><span>DVD Player version</span><input id="dvdVersion" value="${escapeHtml(state.dvdVersion)}" placeholder="Example: 3.10E" /></label>
       </div>
 
       <div class="info-box">
@@ -468,7 +628,7 @@ const views = {
         <div class="info-box">Keep this folder somewhere permanent and make a second backup if you can. Once the files are safe, your temporary USB drive is no longer required by EasySetup.</div>
       `,
       next: {
-        label: ready ? 'BIOS verified — continue' : 'Verify a BIOS first',
+        label: ready ? 'BIOS verified — prepare PCSX2' : 'Verify a BIOS first',
         onClick: () => go('pcsx2'),
         disabled: !ready
       }
@@ -477,54 +637,118 @@ const views = {
 
   pcsx2: () => ({
     html: `
-      <div class="kicker">PCSX2</div>
-      <h2>Turn the dump into a working emulator.</h2>
-      <div class="timeline">
-        <div><span>1</span><p><strong>Install PCSX2.</strong><br>Use the current official Windows release.</p></div>
-        <div><span>2</span><p><strong>BIOS screen.</strong><br>Point PCSX2 to <code>${escapeHtml(state.biosPath || 'your BIOS folder')}</code>. Your ROM0 should appear in the list.</p></div>
-        <div><span>3</span><p><strong>Create a games folder.</strong><br>Something simple like <code>Documents\\Jeux PS2</code> works well.</p></div>
-        <div><span>4</span><p><strong>Add it to the game library.</strong><br>PCSX2 will scan supported game dumps there.</p></div>
+      <div class="kicker">PCSX2 · Automatic preparation</div>
+      <div class="title-row">
+        <div>
+          <h2>Let's prepare the PC side.</h2>
+          <p class="lead">EasySetup now checks the emulator and builds the boring folder structure for you.</p>
+        </div>
+        <button class="button ghost compact" data-action="refresh-pcsx2">↻ Rescan</button>
       </div>
-      <div class="inline-actions">
-        <button class="button primary soft-primary" data-action="open-pcsx2">Open official PCSX2 site ↗</button>
+
+      <div class="setup-stack">
+        ${renderPcsx2Detection()}
+        ${renderWorkspace()}
+      </div>
+
+      <div class="info-box">
+        <strong>What EasySetup will change:</strong> only folders/files inside your Documents directory when you explicitly press a create/copy button. Existing BIOS files with a different size are never overwritten automatically.
       </div>
     `,
-    next: { label: 'Controller setup', onClick: () => go('controller') }
+    next: {
+      label: pcsx2Ready() ? 'PC side ready — controllers →' : 'Finish the three PC checks first',
+      onClick: () => go('controller'),
+      disabled: !pcsx2Ready()
+    }
   }),
 
-  controller: () => ({
-    html: `
-      <div class="kicker">Controller</div>
-      <h2>Make it feel like a console again.</h2>
-      <div class="feature-grid controller-grid">
-        <div class="feature"><strong>Player 1</strong><span>Port 1 → DualShock 2 → Automatic Mapping with your PC controller connected.</span></div>
-        <div class="feature"><strong>Player 2</strong><span>Enable DualShock 2 on Port 2 and map the second physical controller separately.</span></div>
-        <div class="feature"><strong>Achievements</strong><span>RetroAchievements is optional. Hardcore mode is also optional and disables some emulator conveniences.</span></div>
-      </div>
-    `,
-    next: { label: 'Finish setup', onClick: () => go('finish') }
-  }),
+  controller: () => {
+    const controllers = state.controllerScan.result?.controllers || [];
+    return {
+      html: `
+        <div class="kicker">Controller · Windows scan</div>
+        <div class="title-row">
+          <div>
+            <h2>What are we playing with?</h2>
+            <p class="lead">EasySetup checks Windows for likely game controllers before you map them in PCSX2.</p>
+          </div>
+          <button class="button ghost compact" data-action="scan-controllers">↻ Rescan</button>
+        </div>
 
-  finish: () => ({
-    html: `
-      <div class="completion">
-        <div class="completion-ring">✓</div>
-        <div class="kicker">Setup complete</div>
-        <h2>Your PS2 emulation setup has a pulse.</h2>
-        <p class="lead">EasySetup validated the BIOS path and walked you through the rest. Put your own game dumps in the PCSX2 game folder, refresh the library, and play.</p>
-      </div>
+        <div class="scan-zone">${renderControllers()}</div>
 
-      <div class="summary-grid">
-        <div><span>BIOS</span><strong>${escapeHtml(state.biosScan?.best?.consoleModel || 'Verified')}</strong></div>
-        <div><span>Dump</span><strong>${state.biosScan?.best?.completeBiosDrainSet ? 'Full BIOSDrain set' : 'ROM0 detected'}</strong></div>
-        <div><span>USB</span><strong>${escapeHtml(state.selectedUsbRoot || 'Manual / not needed')}</strong></div>
-        <div><span>PCSX2</span><strong>Ready for configuration</strong></div>
-      </div>
+        <div class="controller-help">
+          <div><span>1</span><p><strong>PCSX2 → Settings → Controllers</strong><br>Set Port 1 to DualShock 2.</p></div>
+          <div><span>2</span><p><strong>Automatic Mapping</strong><br>Choose your physical gamepad and verify the buttons.</p></div>
+          <div><span>3</span><p><strong>For two players</strong><br>Enable Port 2 → DualShock 2 and map the second controller separately.</p></div>
+        </div>
 
-      <div class="info-box success-box"><strong>v0.2 unlocked:</strong> real BIOS inspection + real removable-drive detection. No fake green checkmarks.</div>
-    `,
-    next: null
-  })
+        <div class="inline-actions">
+          ${getDetectedPcsx2Path() ? actionButton('Launch PCSX2 now', 'launch-pcsx2', 'primary') : ''}
+        </div>
+
+        <div class="info-box ${controllers.length ? 'success-box' : ''}">
+          ${controllers.length
+            ? `EasySetup sees <strong>${controllers.length}</strong> likely controller device${controllers.length > 1 ? 's' : ''}. Final button mapping still happens inside PCSX2.`
+            : 'No obvious controller was found. This does not block setup — connect one later or use keyboard input.'}
+        </div>
+      `,
+      next: { label: 'Finish setup', onClick: () => go('finish') }
+    };
+  },
+
+  finish: () => {
+    const ws = state.workspace.result || {};
+    const controllers = state.controllerScan.result?.controllers || [];
+    const biosReady = Boolean(ws.biosReady);
+    const emulatorReady = Boolean(getDetectedPcsx2Path());
+    const gamesReady = Boolean(ws.gamesExists);
+
+    return {
+      html: `
+        <div class="completion">
+          <div class="completion-ring">✓</div>
+          <div class="kicker">PS2-EM EasySetup v0.3</div>
+          <h2>Your setup is actually assembled.</h2>
+          <p class="lead">This isn't just a checklist anymore — EasySetup validated the dump, prepared the PCSX2 folders and checked your Windows hardware.</p>
+        </div>
+
+        <div class="final-dashboard">
+          <div class="dashboard-item ${state.biosScan?.best?.validForPcsx2 ? 'ok' : 'no'}">
+            <span>BIOS SOURCE</span><strong>${state.biosScan?.best?.validForPcsx2 ? '✓ Verified' : '— Missing'}</strong>
+            <small>${escapeHtml(state.biosScan?.best?.consoleModel || '')}</small>
+          </div>
+          <div class="dashboard-item ${biosReady ? 'ok' : 'no'}">
+            <span>PCSX2 BIOS</span><strong>${biosReady ? '✓ Ready' : '— Not prepared'}</strong>
+            <small>${escapeHtml(ws.biosPath || '')}</small>
+          </div>
+          <div class="dashboard-item ${emulatorReady ? 'ok' : 'no'}">
+            <span>PCSX2</span><strong>${emulatorReady ? '✓ Detected' : '— Missing'}</strong>
+            <small>${escapeHtml(getDetectedPcsx2Path())}</small>
+          </div>
+          <div class="dashboard-item ${gamesReady ? 'ok' : 'no'}">
+            <span>GAME LIBRARY</span><strong>${gamesReady ? '✓ Ready' : '— Missing'}</strong>
+            <small>${escapeHtml(ws.gamesPath || '')}</small>
+          </div>
+          <div class="dashboard-item ${controllers.length ? 'ok' : 'neutral'}">
+            <span>CONTROLLERS</span><strong>${controllers.length ? `✓ ${controllers.length} detected` : 'Optional'}</strong>
+            <small>Final mapping is done in PCSX2.</small>
+          </div>
+          <div class="dashboard-item neutral">
+            <span>USB</span><strong>${state.selectedUsbRoot ? '✓ Used for dump' : 'Not required'}</strong>
+            <small>${escapeHtml(state.selectedUsbRoot)}</small>
+          </div>
+        </div>
+
+        <div class="inline-actions finish-actions">
+          ${emulatorReady ? actionButton('Launch PCSX2', 'launch-pcsx2', 'primary') : ''}
+          ${gamesReady ? actionButton('Open Jeux PS2', 'open-games-folder', 'ghost') : ''}
+          ${biosReady ? actionButton('Open BIOS folder', 'open-bios-folder', 'ghost') : ''}
+        </div>
+      `,
+      next: null
+    };
+  }
 };
 
 async function scanBiosFolder(folder) {
@@ -543,15 +767,54 @@ async function refreshUsb() {
 
   try {
     const result = await window.easySetup.detectUsbDrives();
-    state.usbScan = {
-      status: result.ok ? 'ready' : 'error',
-      result
-    };
+    state.usbScan = { status: result.ok ? 'ready' : 'error', result };
   } catch (error) {
-    state.usbScan = {
-      status: 'error',
-      result: { error: error?.message || 'USB detection failed.' }
-    };
+    state.usbScan = { status: 'error', result: { error: error?.message || 'USB detection failed.' } };
+  }
+
+  render();
+}
+
+async function refreshPcsx2Setup() {
+  state.pcsx2Scan = { status: 'scanning', result: null };
+  state.workspace = { status: 'scanning', result: null };
+  render();
+
+  try {
+    const [pcsx2Result, workspaceResult] = await Promise.all([
+      window.easySetup.detectPcsx2(),
+      window.easySetup.workspaceStatus()
+    ]);
+
+    state.pcsx2Scan = { status: 'ready', result: pcsx2Result };
+    state.workspace = { status: 'ready', result: workspaceResult };
+
+    if (!state.pcsx2Path && pcsx2Result.installations?.[0]?.path) {
+      state.pcsx2Path = pcsx2Result.installations[0].path;
+    }
+  } catch (error) {
+    state.pcsx2Scan = { status: 'error', result: { error: error?.message || 'PCSX2 scan failed.' } };
+    state.workspace = { status: 'error', result: null };
+  }
+
+  render();
+}
+
+async function refreshWorkspace() {
+  const result = await window.easySetup.workspaceStatus();
+  state.workspace = { status: 'ready', result };
+  render();
+}
+
+async function refreshControllers() {
+  state.controllerScan = { status: 'scanning', result: null };
+  render();
+
+  try {
+    const result = await window.easySetup.detectControllers();
+    state.controllerScan = { status: result.ok ? 'ready' : 'error', result };
+  } catch (error) {
+    state.controllerScan = { status: 'error', result: { error: error?.message || 'Controller detection failed.' } };
   }
 
   render();
@@ -579,6 +842,63 @@ async function handleAction(action, dataset = {}) {
 
   if (action === 'use-usb-bios') {
     if (state.selectedUsbRoot) await scanBiosFolder(state.selectedUsbRoot);
+    return;
+  }
+
+  if (action === 'refresh-pcsx2') {
+    await refreshPcsx2Setup();
+    return;
+  }
+
+  if (action === 'locate-pcsx2') {
+    const result = await window.easySetup.selectPcsx2Exe();
+    if (result?.ok) {
+      state.pcsx2Path = result.path;
+      render();
+    } else if (result?.error) {
+      state.pcsx2Scan = {
+        status: 'ready',
+        result: {
+          ...(state.pcsx2Scan.result || {}),
+          manualError: result.error
+        }
+      };
+      render();
+    }
+    return;
+  }
+
+  if (action === 'launch-pcsx2') {
+    const executable = getDetectedPcsx2Path();
+    if (executable) await window.easySetup.openPath(executable);
+    return;
+  }
+
+  if (action === 'copy-bios') {
+    if (!state.biosPath) return;
+    state.biosCopyResult = await window.easySetup.copyBiosToPcsx2(state.biosPath);
+    await refreshWorkspace();
+    return;
+  }
+
+  if (action === 'create-games-folder') {
+    state.gameFolderResult = await window.easySetup.createGameFolder();
+    await refreshWorkspace();
+    return;
+  }
+
+  if (action === 'open-bios-folder') {
+    if (state.workspace.result?.biosPath) await window.easySetup.openPath(state.workspace.result.biosPath);
+    return;
+  }
+
+  if (action === 'open-games-folder') {
+    if (state.workspace.result?.gamesPath) await window.easySetup.openPath(state.workspace.result.gamesPath);
+    return;
+  }
+
+  if (action === 'scan-controllers') {
+    await refreshControllers();
     return;
   }
 
