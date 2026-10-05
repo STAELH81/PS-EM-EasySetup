@@ -586,7 +586,7 @@ async function fetchLatestBiosDrainAsset() {
   const response = await fetch('https://api.github.com/repos/F0bes/biosdrain/releases/latest', {
     headers: {
       Accept: 'application/vnd.github+json',
-      'User-Agent': 'PS2-EM-EasySetup'
+      'User-Agent': 'PS-EM-EasySetup'
     }
   });
 
@@ -618,7 +618,7 @@ async function downloadBiosDrainBytes() {
   const asset = await fetchLatestBiosDrainAsset();
   const response = await fetch(asset.downloadUrl, {
     headers: {
-      'User-Agent': 'PS2-EM-EasySetup'
+      'User-Agent': 'PS-EM-EasySetup'
     },
     redirect: 'follow'
   });
@@ -742,6 +742,276 @@ async function prepareUsbWithBiosDrain(root, forceReplace = false) {
   }
 }
 
+
+function normalizePs1Model(fileName) {
+  const match = String(fileName || '').match(/SCPH[-_ ]?(\d{3,5})/i);
+  return match ? `SCPH-${match[1]}` : null;
+}
+
+async function inspectPs1BiosFile(filePath) {
+  if (!filePath || typeof filePath !== 'string') {
+    return { ok: false, error: 'No BIOS file was selected.' };
+  }
+
+  try {
+    const stat = await fs.stat(filePath);
+    if (!stat.isFile()) {
+      return { ok: false, error: 'The selected path is not a file.' };
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const size = stat.size;
+    const expectedSize = 512 * 1024;
+    const validSize = size === expectedSize;
+    const allowedExtension = ['.bin', '.rom'].includes(ext);
+    const sha256 = await sha256File(filePath);
+
+    const warnings = [];
+    if (!allowedExtension) {
+      warnings.push('The file extension is unusual for a PS1 BIOS. DuckStation commonly uses .bin BIOS images.');
+    }
+    if (!validSize) {
+      warnings.push('A standard retail PS1 BIOS image is expected to be 512 KB.');
+    }
+
+    return {
+      ok: true,
+      path: filePath,
+      name: path.basename(filePath),
+      size,
+      sizeLabel: formatBytes(size),
+      sha256,
+      model: normalizePs1Model(path.basename(filePath)),
+      validForDuckStation: validSize,
+      warnings
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error?.message || 'Unable to inspect this PS1 BIOS file.'
+    };
+  }
+}
+
+async function findDuckStationExecutablesInDir(directory) {
+  if (!directory || !(await exists(directory))) return [];
+
+  try {
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.isFile() && /^duckstation.*\.exe$/i.test(entry.name))
+      .map((entry) => path.join(directory, entry.name));
+  } catch {
+    return [];
+  }
+}
+
+async function detectDuckStation() {
+  if (process.platform !== 'win32') {
+    return { ok: true, supported: false, found: false, installations: [] };
+  }
+
+  const localAppData = process.env.LOCALAPPDATA || '';
+  const programFiles = process.env.ProgramFiles || '';
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || '';
+
+  const directories = [
+    localAppData ? path.join(localAppData, 'Programs', 'DuckStation') : null,
+    localAppData ? path.join(localAppData, 'DuckStation') : null,
+    programFiles ? path.join(programFiles, 'DuckStation') : null,
+    programFilesX86 ? path.join(programFilesX86, 'DuckStation') : null
+  ].filter(Boolean);
+
+  const candidates = [];
+
+  for (const directory of directories) {
+    candidates.push(...await findDuckStationExecutablesInDir(directory));
+  }
+
+  try {
+    const registryScript = [
+      "$paths = @(",
+      "  'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',",
+      "  'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',",
+      "  'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'",
+      ")",
+      "$items = Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match 'DuckStation' } | Select-Object DisplayName, InstallLocation, DisplayIcon",
+      "$items | ConvertTo-Json -Compress"
+    ].join('\n');
+
+    const { stdout } = await runPowerShell(registryScript, 8000);
+    const trimmed = stdout.trim();
+    const parsed = trimmed ? JSON.parse(trimmed) : [];
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+
+    for (const item of items) {
+      if (item?.InstallLocation) {
+        candidates.push(...await findDuckStationExecutablesInDir(String(item.InstallLocation)));
+      }
+
+      if (item?.DisplayIcon) {
+        const iconPath = String(item.DisplayIcon)
+          .replace(/^"/, '')
+          .replace(/",?-?\d*$/, '')
+          .replace(/,-?\d*$/, '');
+
+        if (/duckstation.*\.exe$/i.test(iconPath)) candidates.push(iconPath);
+      }
+    }
+  } catch {
+    // Registry discovery is best effort.
+  }
+
+  const installations = [];
+  const seen = new Set();
+
+  for (const candidate of candidates) {
+    const normalized = path.normalize(candidate);
+    const key = normalized.toLowerCase();
+    if (seen.has(key) || !(await exists(normalized))) continue;
+    seen.add(key);
+    installations.push({
+      path: normalized,
+      directory: path.dirname(normalized),
+      source: normalized.toLowerCase().includes('program files') ? 'installed' : 'detected'
+    });
+  }
+
+  return {
+    ok: true,
+    supported: true,
+    found: installations.length > 0,
+    installations
+  };
+}
+
+async function validateDuckStationExecutable(executablePath) {
+  if (!executablePath || typeof executablePath !== 'string') {
+    return { ok: false, error: 'No executable selected.' };
+  }
+
+  if (!(await exists(executablePath))) {
+    return { ok: false, error: 'The selected file no longer exists.' };
+  }
+
+  const name = path.basename(executablePath);
+  const looksLikeDuckStation = /^duckstation.*\.exe$/i.test(name);
+
+  return {
+    ok: looksLikeDuckStation,
+    path: executablePath,
+    directory: path.dirname(executablePath),
+    error: looksLikeDuckStation ? null : 'This executable does not look like DuckStation.'
+  };
+}
+
+async function getPs1WorkspaceStatus(documentsPath) {
+  const gamesPath = path.join(documentsPath, 'Jeux PS1');
+  const duckStationDocuments = path.join(documentsPath, 'DuckStation');
+  const biosPath = path.join(duckStationDocuments, 'bios');
+
+  let biosReady = false;
+  let biosFile = null;
+
+  if (await exists(biosPath)) {
+    try {
+      const entries = await fs.readdir(biosPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        const candidate = await inspectPs1BiosFile(path.join(biosPath, entry.name));
+        if (candidate.ok && candidate.validForDuckStation) {
+          biosReady = true;
+          biosFile = candidate;
+          break;
+        }
+      }
+    } catch {
+      // Folder inspection is best effort.
+    }
+  }
+
+  return {
+    ok: true,
+    documentsPath,
+    gamesPath,
+    gamesExists: await exists(gamesPath),
+    duckStationDocuments,
+    duckStationDocumentsExists: await exists(duckStationDocuments),
+    biosPath,
+    biosExists: await exists(biosPath),
+    biosReady,
+    biosFile
+  };
+}
+
+async function createPs1GameFolder(documentsPath) {
+  const gamesPath = path.join(documentsPath, 'Jeux PS1');
+
+  try {
+    await fs.mkdir(gamesPath, { recursive: true });
+    return { ok: true, path: gamesPath, created: true };
+  } catch (error) {
+    return {
+      ok: false,
+      path: gamesPath,
+      error: error?.message || 'Unable to create the PS1 games folder.'
+    };
+  }
+}
+
+async function copyPs1BiosToDuckStation(sourceFile, documentsPath) {
+  const scan = await inspectPs1BiosFile(sourceFile);
+
+  if (!scan.ok || !scan.validForDuckStation) {
+    return {
+      ok: false,
+      error: 'No usable 512 KB PS1 BIOS was found in the selected file.'
+    };
+  }
+
+  const destination = path.join(documentsPath, 'DuckStation', 'bios');
+  const target = path.join(destination, scan.name);
+
+  try {
+    await fs.mkdir(destination, { recursive: true });
+
+    if (path.resolve(sourceFile).toLowerCase() === path.resolve(target).toLowerCase()) {
+      return { ok: true, destination, copied: [], skipped: [scan.name], conflict: false };
+    }
+
+    if (await exists(target)) {
+      const targetHash = await sha256File(target);
+
+      if (targetHash === scan.sha256) {
+        return { ok: true, destination, copied: [], skipped: [scan.name], conflict: false };
+      }
+
+      return {
+        ok: false,
+        conflict: true,
+        destination,
+        error: 'A different BIOS file with the same name already exists. EasySetup did not overwrite it.'
+      };
+    }
+
+    await fs.copyFile(sourceFile, target);
+
+    return {
+      ok: true,
+      destination,
+      copied: [scan.name],
+      skipped: [],
+      conflict: false
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      destination,
+      error: error?.message || 'Unable to copy the PS1 BIOS file.'
+    };
+  }
+}
+
 module.exports = {
   inspectBiosFolder,
   detectUsbDrives,
@@ -753,5 +1023,11 @@ module.exports = {
   detectControllers,
   hasWinget,
   installPcsx2WithWinget,
-  prepareUsbWithBiosDrain
+  prepareUsbWithBiosDrain,
+  inspectPs1BiosFile,
+  detectDuckStation,
+  validateDuckStationExecutable,
+  getPs1WorkspaceStatus,
+  createPs1GameFolder,
+  copyPs1BiosToDuckStation
 };
