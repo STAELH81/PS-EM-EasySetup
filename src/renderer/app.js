@@ -777,7 +777,7 @@ const views = {
       html: `
         <div class="completion">
           <div class="completion-ring">✓</div>
-          <div class="kicker">PS2-EM EasySetup v0.3</div>
+          <div class="kicker">PS2-EM EasySetup v0.4</div>
           <h2>Your setup is actually assembled.</h2>
           <p class="lead">This isn't just a checklist anymore — EasySetup validated the dump, prepared the PCSX2 folders and checked your Windows hardware.</p>
         </div>
