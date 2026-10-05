@@ -8,7 +8,8 @@
   "private": false,
   "scripts": {
     "start": "electron .",
-    "dev": "electron ."
+    "dev": "electron .",
+    "check": "node --check src/main/system.js && node --check src/main/main.js && node --check src/main/preload.js && node --check src/renderer/app.js"
   },
   "devDependencies": {
     "electron": "^42.11.4"
