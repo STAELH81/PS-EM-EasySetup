@@ -138,16 +138,16 @@ ipcMain.handle('configure-pcsx2-game-library', async (event, language = 'en') =>
     ],
     defaultId: 1,
     cancelId: 1,
-    title: localized(language, 'Configure PCSX2 game library', 'Configurer la bibliothèque PCSX2'),
+    title: localized(language, 'Configure PCSX2 automatically', 'Configurer PCSX2 automatiquement'),
     message: localized(
       language,
-      'Add Documents\\Jeux PS2 to the PCSX2 game list?',
-      'Ajouter Documents\\Jeux PS2 à la bibliothèque de jeux PCSX2 ?'
+      'Configure the BIOS selection and add Documents\\Jeux PS2 to the PCSX2 game list?',
+      'Configurer la sélection du BIOS et ajouter Documents\\Jeux PS2 à la bibliothèque de jeux PCSX2 ?'
     ),
     detail: localized(
       language,
-      'EasySetup will close nothing and overwrite nothing blindly. If PCSX2.ini needs a change, a timestamped backup will be created first.',
-      'EasySetup ne fermera rien et n’écrasera rien aveuglément. Si PCSX2.ini doit être modifié, une sauvegarde horodatée sera créée avant.'
+      'EasySetup only fills missing PS-EM defaults. Existing custom BIOS choices are preserved, PCSX2 must be closed, and a timestamped PCSX2.ini backup is created before any change.',
+      'EasySetup complète uniquement les réglages PS-EM manquants. Les choix BIOS personnalisés existants sont conservés, PCSX2 doit être fermé, et une sauvegarde horodatée de PCSX2.ini est créée avant toute modification.'
     )
   });
 
