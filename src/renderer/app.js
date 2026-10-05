@@ -656,7 +656,7 @@ function renderPcsx2Automation() {
     resultHtml = '<div class="operation-result">Configuration cancelled.</div>';
   } else if (result?.ok) {
     resultHtml = result.changed
-      ? `<div class="operation-result good">✓ Jeux PS2 was added to PCSX2. Backup: <code>${escapeHtml(result.backupPath || '')}</code></div>`
+      ? `<div class="operation-result good">✓ PCSX2 was prepared. Game library and missing BIOS defaults were updated safely. Backup: <code>${escapeHtml(result.backupPath || '')}</code></div>`
       : '<div class="operation-result good">✓ PCSX2 already scans Jeux PS2.</div>';
   } else if (result?.pcsx2Running) {
     resultHtml = '<div class="operation-result bad">⚠ Close PCSX2 first, then try again.</div>';
@@ -679,18 +679,33 @@ function renderPcsx2Automation() {
     `;
   }
 
+  const biosConfigured = !config.biosName || (config.biosFolderConfigured && config.biosSelectionConfigured);
+  const fullyConfigured = Boolean(config.gameListConfigured && biosConfigured);
+
   return `
-    <div class="setup-card ${config.gameListConfigured ? 'ready' : ''}">
+    <div class="setup-card ${fullyConfigured ? 'ready' : ''}">
       <div class="setup-card-head">
         <div>
           <span class="eyebrow">PCSX2 CONFIG</span>
-          <strong>${config.gameListConfigured ? 'Jeux PS2 is already in the PCSX2 library' : 'Add Jeux PS2 to PCSX2 automatically'}</strong>
+          <strong>${fullyConfigured ? 'PCSX2 defaults are already prepared' : 'Finish PCSX2 automatically'}</strong>
         </div>
-        ${statusPill(config.gameListConfigured ? 'READY' : 'OPTIONAL', config.gameListConfigured ? 'success' : 'neutral')}
+        ${statusPill(fullyConfigured ? 'READY' : 'OPTIONAL', fullyConfigured ? 'success' : 'neutral')}
       </div>
-      <p>PS-EM can safely add <code>${escapeHtml(config.gamesPath || '')}</code> as a recursive PCSX2 game-list path. A timestamped backup of PCSX2.ini is created before any change.</p>
+
+      <div class="config-status-grid">
+        <div class="${config.gameListConfigured ? 'ok' : ''}">
+          <span>GAME LIBRARY</span>
+          <strong>${config.gameListConfigured ? '✓ Jeux PS2 configured' : '— Jeux PS2 not added yet'}</strong>
+        </div>
+        <div class="${biosConfigured ? 'ok' : ''}">
+          <span>BIOS SELECTION</span>
+          <strong>${biosConfigured ? '✓ BIOS configured' : '— BIOS not selected yet'}</strong>
+        </div>
+      </div>
+
+      <p>PS-EM can fill missing defaults in PCSX2.ini: the recursive <code>${escapeHtml(config.gamesPath || '')}</code> library path and, when available, the verified PS2 BIOS. Existing custom BIOS choices are preserved. A timestamped backup is created before any change.</p>
       <div class="inline-actions">
-        ${config.gameListConfigured ? '' : actionButton('Configure automatically', 'configure-pcsx2-library', 'primary', 'compact')}
+        ${fullyConfigured ? '' : actionButton('Configure BIOS + library', 'configure-pcsx2-library', 'primary', 'compact')}
         ${actionButton('Rescan config', 'rescan-pcsx2-config', 'ghost', 'compact')}
       </div>
       ${resultHtml}
