@@ -10,7 +10,13 @@ const {
   copyBiosToPcsx2,
   detectControllers,
   installPcsx2WithWinget,
-  prepareUsbWithBiosDrain
+  prepareUsbWithBiosDrain,
+  inspectPs1BiosFile,
+  detectDuckStation,
+  validateDuckStationExecutable,
+  getPs1WorkspaceStatus,
+  createPs1GameFolder,
+  copyPs1BiosToDuckStation
 } = require('./system');
 
 function createWindow() {
@@ -41,6 +47,31 @@ ipcMain.handle('select-folder', async (_event, title) => {
   return result.filePaths[0];
 });
 
+ipcMain.handle('select-ps1-bios', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Select your PlayStation BIOS',
+    properties: ['openFile'],
+    filters: [
+      { name: 'PlayStation BIOS', extensions: ['bin', 'rom'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  });
+
+  if (result.canceled || !result.filePaths[0]) return null;
+  return inspectPs1BiosFile(result.filePaths[0]);
+});
+
+ipcMain.handle('select-duckstation-exe', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Locate DuckStation',
+    properties: ['openFile'],
+    filters: [{ name: 'DuckStation executable', extensions: ['exe'] }]
+  });
+
+  if (result.canceled || !result.filePaths[0]) return null;
+  return validateDuckStationExecutable(result.filePaths[0]);
+});
+
 ipcMain.handle('select-pcsx2-exe', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Locate PCSX2',
@@ -64,6 +95,22 @@ ipcMain.handle('detect-usb-drives', async () => {
 
 ipcMain.handle('detect-pcsx2', async () => {
   return detectPcsx2();
+});
+
+ipcMain.handle('detect-duckstation', async () => {
+  return detectDuckStation();
+});
+
+ipcMain.handle('ps1-workspace-status', async () => {
+  return getPs1WorkspaceStatus(app.getPath('documents'));
+});
+
+ipcMain.handle('create-ps1-game-folder', async () => {
+  return createPs1GameFolder(app.getPath('documents'));
+});
+
+ipcMain.handle('copy-ps1-bios', async (_event, sourceFile) => {
+  return copyPs1BiosToDuckStation(sourceFile, app.getPath('documents'));
 });
 
 ipcMain.handle('workspace-status', async () => {
