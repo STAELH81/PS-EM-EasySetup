@@ -1,0 +1,37 @@
+name: Windows installer
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - v0.4-usb-packaging
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Check JavaScript syntax
+        run: npm run check
+
+      - name: Build NSIS installer
+        run: npm run build
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: PS2-EM-EasySetup-Windows
+          path: dist/*.exe
+          if-no-files-found: error
