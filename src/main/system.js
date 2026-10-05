@@ -270,6 +270,42 @@ async function detectPcsx2() {
     // PCSX2 is commonly portable and therefore absent from PATH.
   }
 
+  try {
+    const registryScript = [
+      "$paths = @(",
+      "  'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',",
+      "  'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',",
+      "  'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'",
+      ")",
+      "$items = Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match '^PCSX2' } | Select-Object DisplayName, InstallLocation, DisplayIcon",
+      "$items | ConvertTo-Json -Compress"
+    ].join('\n');
+
+    const { stdout } = await runPowerShell(registryScript, 8000);
+    const trimmed = stdout.trim();
+    const parsed = trimmed ? JSON.parse(trimmed) : [];
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+
+    for (const item of items) {
+      if (item?.InstallLocation) {
+        candidates.push(path.join(String(item.InstallLocation), 'pcsx2-qt.exe'));
+      }
+
+      if (item?.DisplayIcon) {
+        const iconPath = String(item.DisplayIcon)
+          .replace(/^"/, '')
+          .replace(/",?-?\d*$/, '')
+          .replace(/,-?\d*$/, '');
+
+        if (/pcsx2.*\.exe$/i.test(iconPath)) {
+          candidates.push(iconPath);
+        }
+      }
+    }
+  } catch {
+    // Registry discovery is best effort.
+  }
+
   const installations = [];
   const seen = new Set();
 
