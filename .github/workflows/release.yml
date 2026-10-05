@@ -66,18 +66,20 @@ jobs:
           }
 
           $notes = @"
-          PS2-EM EasySetup v$env:VERSION
+          PS-EM EasySetup v$env:VERSION
 
-          First public Windows installer milestone.
+          Multi-console PlayStation setup release.
 
           Highlights:
-          - PS2 BIOS dump validation
+          - PS1 BIOS validation + DuckStation setup
+          - PS2 BIOS dump validation + PCSX2 setup
           - Removable USB detection
           - Official BIOSDrain USB preparation
           - FreeMcBoot / FreeDVDBoot guidance
           - PCSX2 detection and optional WinGet installation
+          - DuckStation detection and workspace preparation
           - BIOS workspace preparation
-          - PS2 game-library folder creation
+          - PS1 and PS2 game-library folder creation
           - Controller detection
           - Final setup dashboard
 
@@ -85,8 +87,8 @@ jobs:
           "@
 
           gh release create "v$env:VERSION" `
-            "$($installer.FullName)#PS2-EM EasySetup v$env:VERSION Windows Installer" `
+            "$($installer.FullName)#PS-EM EasySetup v$env:VERSION Windows Installer" `
             --repo "${{ github.repository }}" `
             --target "${{ github.sha }}" `
-            --title "PS2-EM EasySetup v$env:VERSION" `
+            --title "PS-EM EasySetup v$env:VERSION" `
             --notes "$notes"

@@ -1,7 +1,7 @@
 {
-  "name": "ps2-em-easysetup",
-  "version": "0.4.0",
-  "description": "Guided Windows setup assistant for dumping a PS2 BIOS and configuring PCSX2.",
+  "name": "ps-em-easysetup",
+  "version": "0.5.0",
+  "description": "Guided Windows setup assistant for PlayStation and PlayStation 2 emulation setup.",
   "main": "src/main/main.js",
   "author": "STAELH81",
   "license": "MIT",
@@ -9,9 +9,11 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "check": "node --check src/main/system.js && node --check src/main/main.js && node --check src/main/preload.js && node --check src/renderer/app.js",
+    "check": "node --check src/main/system.js && node --check src/main/main.js && node --check src/main/preload.js && node --check src/renderer/i18n.js && node --check src/renderer/app.js && node --check scripts/generate-icons.js",
     "build": "electron-builder --win nsis --publish never",
-    "build:dir": "electron-builder --dir"
+    "build:dir": "electron-builder --dir",
+    "prestart": "node scripts/generate-icons.js",
+    "prebuild": "node scripts/generate-icons.js"
   },
   "devDependencies": {
     "electron": "^42.11.4",
@@ -20,16 +22,17 @@
   "overrides": {
     "yauzl": "^3.3.1"
   },
-  "productName": "PS2-EM EasySetup",
+  "productName": "PS-EM EasySetup",
   "build": {
-    "appId": "com.staelh81.ps2emeasysetup",
-    "productName": "PS2-EM EasySetup",
+    "appId": "com.staelh81.psemeasysetup",
+    "productName": "PS-EM EasySetup",
     "artifactName": "${productName}-Setup-${version}.${ext}",
     "directories": {
       "output": "dist"
     },
     "files": [
       "src/**/*",
+      "build/**/*",
       "package.json",
       "LICENSE"
     ],
@@ -41,14 +44,18 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "PS2-EM EasySetup"
+      "shortcutName": "PS-EM EasySetup",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     }
   }
 }

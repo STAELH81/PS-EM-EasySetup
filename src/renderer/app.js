@@ -1,6 +1,14 @@
 const state = {
   route: 'welcome',
   history: [],
+  language: window.PSEM_I18N?.getInitialLanguage?.() || 'en',
+  console: null,
+  ps1Bios: null,
+  duckStationScan: { status: 'idle', result: null },
+  duckStationPath: '',
+  ps1Workspace: { status: 'idle', result: null },
+  ps1BiosCopyResult: null,
+  ps1GameFolderResult: null,
   biosPath: '',
   biosScan: null,
   usbScan: { status: 'idle', result: null },
@@ -14,13 +22,16 @@ const state = {
   gameFolderResult: null,
   controllerScan: { status: 'idle', result: null },
   usbPrepareResult: null,
-  pcsx2Install: { status: 'idle', result: null }
+  pcsx2Install: { status: 'idle', result: null },
+  pcsx2Config: { status: 'idle', result: null },
+  pcsx2ConfigResult: null
 };
 
 const steps = [
   ['start', 'Start'],
+  ['console', 'Console'],
   ['bios', 'BIOS'],
-  ['pcsx2', 'PCSX2'],
+  ['emulator', 'Emulator'],
   ['controller', 'Controller'],
   ['finish', 'Finish']
 ];
@@ -33,8 +44,17 @@ const nextButton = document.getElementById('nextButton');
 const officialLinks = {
   pcsx2: 'https://pcsx2.net/',
   biosdrain: 'https://github.com/F0bes/biosdrain/releases/latest',
-  freedvdboot: 'https://github.com/CTurt/FreeDVDBoot'
+  freedvdboot: 'https://github.com/CTurt/FreeDVDBoot',
+  duckstation: 'https://github.com/stenzek/duckstation/releases/latest'
 };
+
+function tr(value) {
+  return window.PSEM_I18N?.t(value, state.language) ?? value;
+}
+
+function translateHtml(value) {
+  return window.PSEM_I18N?.html(value, state.language) ?? value;
+}
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -47,7 +67,9 @@ function escapeHtml(value) {
 
 function currentStage() {
   if (state.route === 'welcome') return 'start';
+  if (state.route === 'console-select') return 'console';
   if ([
+    'ps1-bios',
     'bios-choice',
     'bios-existing',
     'dump-requirements',
@@ -58,7 +80,7 @@ function currentStage() {
     'freedvd-guide',
     'bios-backup'
   ].includes(state.route)) return 'bios';
-  if (state.route === 'pcsx2') return 'pcsx2';
+  if (['pcsx2', 'duckstation'].includes(state.route)) return 'emulator';
   if (state.route === 'controller') return 'controller';
   return 'finish';
 }
@@ -70,7 +92,10 @@ function renderSteps() {
   stepList.innerHTML = steps.map(([id, label], index) => {
     const cls = index < activeIndex ? 'step done' : index === activeIndex ? 'step active' : 'step';
     const badge = index < activeIndex ? '✓' : index + 1;
-    return `<div class="${cls}"><span class="step-index">${badge}</span><span>${label}</span></div>`;
+    const displayLabel = id === 'emulator'
+      ? (state.console === 'ps1' ? 'DuckStation' : state.console === 'ps2' ? 'PCSX2' : 'Emulator')
+      : label;
+    return `<div class="${cls}"><span class="step-index">${badge}</span><span>${tr(displayLabel)}</span></div>`;
   }).join('');
 }
 
@@ -81,6 +106,7 @@ function go(route) {
 
   if (route === 'usb-detect' && state.usbScan.status === 'idle') refreshUsb();
   if (route === 'pcsx2' && state.pcsx2Scan.status === 'idle') refreshPcsx2Setup();
+  if (route === 'duckstation' && state.duckStationScan.status === 'idle') refreshDuckStationSetup();
   if (route === 'controller' && state.controllerScan.status === 'idle') refreshControllers();
 }
 
@@ -321,6 +347,166 @@ function renderUsbPreparation() {
   `;
 }
 
+function renderPs1Bios() {
+  if (!state.ps1Bios) {
+    return `
+      <div class="empty-state">
+        <div class="empty-icon">PS1</div>
+        <strong>No PlayStation BIOS selected yet.</strong>
+        <span>Select your own BIOS file. EasySetup checks the file locally and never uploads it.</span>
+      </div>
+    `;
+  }
+
+  if (state.ps1Bios.loading) {
+    return `
+      <div class="scanner-card">
+        <div class="spinner"></div>
+        <div><strong>Inspecting PS1 BIOS…</strong><span>Checking file size and calculating SHA-256.</span></div>
+      </div>
+    `;
+  }
+
+  if (!state.ps1Bios.ok) {
+    return `
+      <div class="status-card danger">
+        <div class="status-icon">!</div>
+        <div><strong>Could not validate this BIOS</strong><p>${escapeHtml(state.ps1Bios.error || 'Unknown error')}</p></div>
+      </div>
+    `;
+  }
+
+  const valid = Boolean(state.ps1Bios.validForDuckStation);
+  const warnings = state.ps1Bios.warnings?.length
+    ? `<div class="mini-warnings">${state.ps1Bios.warnings.map((warning) => `<span>⚠ ${escapeHtml(warning)}</span>`).join('')}</div>`
+    : '';
+
+  return `
+    <div class="status-card ${valid ? 'success' : 'danger'}">
+      <div class="status-icon">${valid ? '✓' : '!'}</div>
+      <div class="status-body">
+        <div class="status-title-row">
+          <strong>${valid ? 'PlayStation BIOS looks valid' : 'Unexpected BIOS file size'}</strong>
+          ${statusPill(valid ? '512 KB' : state.ps1Bios.sizeLabel || 'UNKNOWN', valid ? 'success' : 'danger')}
+        </div>
+        <p><strong>${escapeHtml(state.ps1Bios.name)}</strong>${state.ps1Bios.model ? ` · ${escapeHtml(state.ps1Bios.model)}` : ''}</p>
+        <div class="hash-box">SHA-256 <code>${escapeHtml(state.ps1Bios.sha256 || '')}</code></div>
+        ${warnings}
+      </div>
+    </div>
+  `;
+}
+
+function getDetectedDuckStationPath() {
+  return state.duckStationPath || state.duckStationScan.result?.installations?.[0]?.path || '';
+}
+
+function renderDuckStationDetection() {
+  if (state.duckStationScan.status === 'scanning') {
+    return `
+      <div class="setup-tile scanning">
+        <div class="tile-icon"><div class="spinner mini-spinner"></div></div>
+        <div class="tile-main"><strong>Looking for DuckStation…</strong><span>Checking common install locations and the Windows registry.</span></div>
+      </div>
+    `;
+  }
+
+  const executable = getDetectedDuckStationPath();
+
+  if (executable) {
+    return `
+      <div class="setup-tile good">
+        <div class="tile-icon">✓</div>
+        <div class="tile-main">
+          <div class="tile-title"><strong>DuckStation detected</strong>${statusPill('READY', 'success')}</div>
+          <span class="mono-path">${escapeHtml(executable)}</span>
+        </div>
+        <div class="tile-actions">
+          ${actionButton('Launch', 'launch-duckstation', 'ghost', 'compact')}
+          ${actionButton('Change', 'locate-duckstation', 'ghost', 'compact')}
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="setup-tile attention">
+      <div class="tile-icon">!</div>
+      <div class="tile-main">
+        <div class="tile-title"><strong>DuckStation not detected</strong>${statusPill('ACTION NEEDED', 'warning')}</div>
+        <span>Install the official Windows build, or locate an existing portable copy.</span>
+      </div>
+      <div class="tile-actions">
+        ${actionButton('Locate', 'locate-duckstation', 'ghost', 'compact')}
+        ${actionButton('Official download', 'open-duckstation', 'primary', 'compact')}
+      </div>
+    </div>
+  `;
+}
+
+function renderPs1Workspace() {
+  if (state.ps1Workspace.status === 'scanning') {
+    return `
+      <div class="scanner-card">
+        <div class="spinner"></div>
+        <div><strong>Checking PlayStation workspace…</strong><span>Looking for DuckStation BIOS and PS1 game folders.</span></div>
+      </div>
+    `;
+  }
+
+  const ws = state.ps1Workspace.result;
+  if (!ws) return `<div class="empty-state"><div class="empty-icon">DIR</div><strong>Workspace not scanned yet.</strong></div>`;
+
+  const biosReady = Boolean(ws.biosReady);
+  const gamesReady = Boolean(ws.gamesExists);
+
+  const biosResult = state.ps1BiosCopyResult
+    ? state.ps1BiosCopyResult.ok
+      ? `<div class="operation-result good">✓ PS1 BIOS copied / already ready.</div>`
+      : `<div class="operation-result bad">⚠ ${escapeHtml(state.ps1BiosCopyResult.error || 'BIOS copy needs attention.')}</div>`
+    : '';
+
+  const gameResult = state.ps1GameFolderResult?.ok
+    ? '<div class="operation-result good">✓ PS1 game folder ready.</div>'
+    : state.ps1GameFolderResult?.error
+      ? `<div class="operation-result bad">⚠ ${escapeHtml(state.ps1GameFolderResult.error)}</div>`
+      : '';
+
+  return `
+    <div class="setup-grid">
+      <div class="setup-card ${biosReady ? 'ready' : ''}">
+        <div class="setup-card-head">
+          <div><span class="eyebrow">BIOS DESTINATION</span><strong>${biosReady ? 'DuckStation BIOS is ready' : 'Prepare DuckStation BIOS folder'}</strong></div>
+          ${statusPill(biosReady ? 'READY' : 'NOT READY', biosReady ? 'success' : 'warning')}
+        </div>
+        <p><code>${escapeHtml(ws.biosPath)}</code></p>
+        <div class="inline-actions">
+          ${actionButton(biosReady ? 'Copy / verify again' : 'Copy my PS1 BIOS', 'copy-ps1-bios', biosReady ? 'ghost' : 'primary', 'compact')}
+          ${ws.biosExists ? actionButton('Open folder', 'open-ps1-bios-folder', 'ghost', 'compact') : ''}
+        </div>
+        ${biosResult}
+      </div>
+
+      <div class="setup-card ${gamesReady ? 'ready' : ''}">
+        <div class="setup-card-head">
+          <div><span class="eyebrow">GAME LIBRARY</span><strong>${gamesReady ? 'PS1 game folder exists' : 'Create your PS1 game folder'}</strong></div>
+          ${statusPill(gamesReady ? 'READY' : 'NOT READY', gamesReady ? 'success' : 'warning')}
+        </div>
+        <p><code>${escapeHtml(ws.gamesPath)}</code></p>
+        <div class="inline-actions">
+          ${gamesReady ? actionButton('Open folder', 'open-ps1-games-folder', 'ghost', 'compact') : actionButton('Create automatically', 'create-ps1-games-folder', 'primary', 'compact')}
+        </div>
+        ${gameResult}
+      </div>
+    </div>
+  `;
+}
+
+function duckStationReady() {
+  const ws = state.ps1Workspace.result;
+  return Boolean(getDetectedDuckStationPath() && ws?.gamesExists && ws?.biosReady);
+}
+
 function getDetectedPcsx2Path() {
   return state.pcsx2Path || state.pcsx2Scan.result?.installations?.[0]?.path || '';
 }
@@ -448,6 +634,85 @@ function renderWorkspace() {
   `;
 }
 
+function renderPcsx2Automation() {
+  if (state.pcsx2Config.status === 'scanning') {
+    return `
+      <div class="setup-card">
+        <div class="setup-card-head">
+          <div><span class="eyebrow">PCSX2 CONFIG</span><strong>Checking PCSX2 game-list configuration…</strong></div>
+          <div class="spinner mini-spinner"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  const config = state.pcsx2Config.result;
+  if (!config) return '';
+
+  const result = state.pcsx2ConfigResult;
+  let resultHtml = '';
+
+  if (result?.cancelled) {
+    resultHtml = '<div class="operation-result">Configuration cancelled.</div>';
+  } else if (result?.ok) {
+    resultHtml = result.changed
+      ? `<div class="operation-result good">✓ PCSX2 was prepared. Game library and missing BIOS defaults were updated safely. Backup: <code>${escapeHtml(result.backupPath || '')}</code></div>`
+      : '<div class="operation-result good">✓ PCSX2 already scans Jeux PS2.</div>';
+  } else if (result?.pcsx2Running) {
+    resultHtml = '<div class="operation-result bad">⚠ Close PCSX2 first, then try again.</div>';
+  } else if (result?.needsFirstLaunch) {
+    resultHtml = '<div class="operation-result bad">⚠ Launch PCSX2 once and finish its first-run wizard, then Rescan.</div>';
+  } else if (result?.error) {
+    resultHtml = `<div class="operation-result bad">⚠ ${escapeHtml(result.error)}</div>`;
+  }
+
+  if (!config.settingsFound) {
+    return `
+      <div class="setup-card">
+        <div class="setup-card-head">
+          <div><span class="eyebrow">PCSX2 CONFIG</span><strong>First launch still needed</strong></div>
+          ${statusPill('WAITING', 'warning')}
+        </div>
+        <p>PS-EM could not find PCSX2.ini yet. Launch PCSX2 once, finish the first-run wizard, close it, then press Rescan.</p>
+        ${resultHtml}
+      </div>
+    `;
+  }
+
+  const biosConfigured = !config.biosName || (config.biosFolderConfigured && config.biosSelectionConfigured);
+  const fullyConfigured = Boolean(config.gameListConfigured && biosConfigured);
+
+  return `
+    <div class="setup-card ${fullyConfigured ? 'ready' : ''}">
+      <div class="setup-card-head">
+        <div>
+          <span class="eyebrow">PCSX2 CONFIG</span>
+          <strong>${fullyConfigured ? 'PCSX2 defaults are already prepared' : 'Finish PCSX2 automatically'}</strong>
+        </div>
+        ${statusPill(fullyConfigured ? 'READY' : 'OPTIONAL', fullyConfigured ? 'success' : 'neutral')}
+      </div>
+
+      <div class="config-status-grid">
+        <div class="${config.gameListConfigured ? 'ok' : ''}">
+          <span>GAME LIBRARY</span>
+          <strong>${config.gameListConfigured ? '✓ Jeux PS2 configured' : '— Jeux PS2 not added yet'}</strong>
+        </div>
+        <div class="${biosConfigured ? 'ok' : ''}">
+          <span>BIOS SELECTION</span>
+          <strong>${biosConfigured ? '✓ BIOS configured' : '— BIOS not selected yet'}</strong>
+        </div>
+      </div>
+
+      <p>PS-EM can fill missing defaults in PCSX2.ini: the recursive <code>${escapeHtml(config.gamesPath || '')}</code> library path and, when available, the verified PS2 BIOS. Existing custom BIOS choices are preserved. A timestamped backup is created before any change.</p>
+      <div class="inline-actions">
+        ${fullyConfigured ? '' : actionButton('Configure BIOS + library', 'configure-pcsx2-library', 'primary', 'compact')}
+        ${actionButton('Rescan config', 'rescan-pcsx2-config', 'ghost', 'compact')}
+      </div>
+      ${resultHtml}
+    </div>
+  `;
+}
+
 function pcsx2Ready() {
   const ws = state.workspace.result;
   return Boolean(getDetectedPcsx2Path() && ws?.gamesExists && ws?.biosReady);
@@ -490,9 +755,12 @@ function renderControllers() {
           <div class="controller-number">P${index + 1}</div>
           <div>
             <strong>${escapeHtml(controller.name)}</strong>
-            <span>${escapeHtml(controller.manufacturer || controller.pnpClass || 'Windows game controller')}</span>
+            <span>${escapeHtml(controller.profile || controller.manufacturer || controller.pnpClass || 'Windows game controller')} · ${escapeHtml(controller.connection || 'Connected')}</span>
           </div>
-          ${statusPill('CONNECTED', 'success')}
+          <div class="controller-badges">
+            ${statusPill(String(controller.type || 'generic').toUpperCase(), controller.type === 'generic' ? 'neutral' : 'success')}
+            ${statusPill('CONNECTED', 'success')}
+          </div>
         </div>
       `).join('')}
     </div>
@@ -502,28 +770,81 @@ function renderControllers() {
 const views = {
   welcome: () => ({
     html: `
-      <div class="hero">
+      <div class="hero onboarding-hero">
         <div>
-          <div class="kicker">PS2-EM EasySetup · v0.4</div>
-          <h2>From real PS2 to PCSX2.<br><span class="gradient-text">Now it can prep the USB and install PCSX2 too.</span></h2>
-          <p class="lead">Validate the BIOS, inspect the USB drive, detect PCSX2, prepare its folders, and check your controllers from one guided Windows utility.</p>
+          <div class="kicker">PS-EM EasySetup · v0.5</div>
+          <h2>Configure your PlayStation setup without the setup headache.</h2>
+          <p class="lead">PS-EM guides you from your own BIOS to a clean PS1 or PS2 emulator setup, while keeping every sensitive file local.</p>
+
+          <div class="welcome-language">
+            <span>Language</span>
+            <div class="language-switcher large">
+              <button type="button" data-language="fr">Français</button>
+              <button type="button" data-language="en">English</button>
+            </div>
+          </div>
         </div>
         <div class="hero-orbit" aria-hidden="true">
           <span class="shape triangle">△</span>
           <span class="shape circle">○</span>
           <span class="shape cross">×</span>
           <span class="shape square">□</span>
-          <div class="hero-core">PS2<br><small>SETUP</small></div>
+          <div class="hero-core">PS<br><small>EASYSETUP</small></div>
         </div>
       </div>
-      <div class="feature-grid">
-        <div class="feature"><strong>BIOS + USB</strong><span>Validate the dump and prepare a FAT32 USB with official BIOSDrain.</span></div>
-        <div class="feature"><strong>PCSX2 setup</strong><span>Detect, install with WinGet, launch, copy BIOS and create the game library.</span></div>
-        <div class="feature"><strong>Controller scan</strong><span>See what Windows exposes before opening PCSX2 mapping.</span></div>
+
+      <div class="onboarding-steps">
+        <div><span>01</span><strong>Choose your console</strong><small>PlayStation or PlayStation 2.</small></div>
+        <div><span>02</span><strong>Validate your own BIOS</strong><small>Everything stays local on your PC.</small></div>
+        <div><span>03</span><strong>Prepare the emulator</strong><small>Folders, game library and controller checks.</small></div>
+      </div>
+
+      <div class="info-box success-box">No uploads. No bundled BIOS. No destructive formatting.</div>
+    `,
+    next: { label: 'Choose a console', onClick: () => go('console-select') }
+  }),
+
+  'console-select': () => ({
+    html: `
+      <div class="kicker">Console</div>
+      <h2>What are we setting up?</h2>
+      <p class="lead">Pick the PlayStation generation. You can always go Back and switch without restarting EasySetup.</p>
+      <div class="console-grid">
+        <button class="console-card" data-action="choose-ps1">
+          <div class="console-generation">PS1</div>
+          <div><strong>PlayStation</strong><span>BIOS + DuckStation + Jeux PS1</span></div>
+          <span class="choice-arrow">→</span>
+        </button>
+        <button class="console-card" data-action="choose-ps2">
+          <div class="console-generation">PS2</div>
+          <div><strong>PlayStation 2</strong><span>BIOS dump + PCSX2 + Jeux PS2</span></div>
+          <span class="choice-arrow">→</span>
+        </button>
       </div>
     `,
-    next: { label: 'Start EasySetup', onClick: () => go('bios-choice') }
+    next: null
   }),
+
+  'ps1-bios': () => {
+    const ready = Boolean(state.ps1Bios?.validForDuckStation);
+    return {
+      html: `
+        <div class="kicker">PlayStation · BIOS</div>
+        <h2>Select your PS1 BIOS.</h2>
+        <p class="lead">EasySetup validates it locally. A standard retail PlayStation BIOS image is 512 KB; the file itself never leaves your PC.</p>
+        <div class="inline-actions">
+          <button class="button primary" data-action="select-ps1-bios">Choose BIOS file…</button>
+        </div>
+        <div class="scan-zone">${renderPs1Bios()}</div>
+        <div class="info-box">Your BIOS is not copied into the repository or uploaded anywhere. PS-EM only reads it locally to prepare DuckStation.</div>
+      `,
+      next: {
+        label: ready ? 'BIOS verified — prepare DuckStation' : 'Select a valid PS1 BIOS first',
+        onClick: () => go('duckstation'),
+        disabled: !ready
+      }
+    };
+  },
 
   'bios-choice': () => ({
     html: `
@@ -718,6 +1039,7 @@ const views = {
       <div class="setup-stack">
         ${renderPcsx2Detection()}
         ${renderWorkspace()}
+        ${renderPcsx2Automation()}
       </div>
 
       <div class="info-box">
@@ -731,6 +1053,33 @@ const views = {
     }
   }),
 
+  duckstation: () => ({
+    html: `
+      <div class="kicker">DuckStation · PlayStation setup</div>
+      <div class="title-row">
+        <div>
+          <h2>Prepare the PS1 side.</h2>
+          <p class="lead">PS-EM checks DuckStation, copies your verified BIOS into its Documents workspace and creates <code>Jeux PS1</code>.</p>
+        </div>
+        <button class="button ghost compact" data-action="refresh-duckstation">↻ Rescan</button>
+      </div>
+
+      <div class="setup-stack">
+        ${renderDuckStationDetection()}
+        ${renderPs1Workspace()}
+      </div>
+
+      <div class="info-box">
+        Existing same-name BIOS files are never overwritten when their contents differ.
+      </div>
+    `,
+    next: {
+      label: duckStationReady() ? 'PS1 side ready — controllers →' : 'Finish the PS1 checks first',
+      onClick: () => go('controller'),
+      disabled: !duckStationReady()
+    }
+  }),
+
   controller: () => {
     const controllers = state.controllerScan.result?.controllers || [];
     return {
@@ -739,7 +1088,7 @@ const views = {
         <div class="title-row">
           <div>
             <h2>What are we playing with?</h2>
-            <p class="lead">EasySetup checks Windows for likely game controllers before you map them in PCSX2.</p>
+            <p class="lead">EasySetup checks Windows for likely game controllers before you map them in ${state.console === 'ps1' ? 'DuckStation' : 'PCSX2'}.</p>
           </div>
           <button class="button ghost compact" data-action="scan-controllers">↻ Rescan</button>
         </div>
@@ -747,18 +1096,20 @@ const views = {
         <div class="scan-zone">${renderControllers()}</div>
 
         <div class="controller-help">
-          <div><span>1</span><p><strong>PCSX2 → Settings → Controllers</strong><br>Set Port 1 to DualShock 2.</p></div>
+          <div><span>1</span><p><strong>${state.console === 'ps1' ? 'DuckStation → Settings → Controllers' : 'PCSX2 → Settings → Controllers'}</strong><br>Choose the first controller port.</p></div>
           <div><span>2</span><p><strong>Automatic Mapping</strong><br>Choose your physical gamepad and verify the buttons.</p></div>
-          <div><span>3</span><p><strong>For two players</strong><br>Enable Port 2 → DualShock 2 and map the second controller separately.</p></div>
+          <div><span>3</span><p><strong>For two players</strong><br>Enable the second controller port and map it separately.</p></div>
         </div>
 
         <div class="inline-actions">
-          ${getDetectedPcsx2Path() ? actionButton('Launch PCSX2 now', 'launch-pcsx2', 'primary') : ''}
+          ${state.console === 'ps1'
+            ? (getDetectedDuckStationPath() ? actionButton('Launch DuckStation now', 'launch-duckstation', 'primary') : '')
+            : (getDetectedPcsx2Path() ? actionButton('Launch PCSX2 now', 'launch-pcsx2', 'primary') : '')}
         </div>
 
         <div class="info-box ${controllers.length ? 'success-box' : ''}">
           ${controllers.length
-            ? `EasySetup sees <strong>${controllers.length}</strong> likely controller device${controllers.length > 1 ? 's' : ''}. Final button mapping still happens inside PCSX2.`
+            ? `EasySetup sees <strong>${controllers.length}</strong> likely controller device${controllers.length > 1 ? 's' : ''}. Final button mapping still happens inside ${state.console === 'ps1' ? 'DuckStation' : 'PCSX2'}.`
             : 'No obvious controller was found. This does not block setup — connect one later or use keyboard input.'}
         </div>
       `,
@@ -767,33 +1118,40 @@ const views = {
   },
 
   finish: () => {
-    const ws = state.workspace.result || {};
     const controllers = state.controllerScan.result?.controllers || [];
+    const isPs1 = state.console === 'ps1';
+    const ws = isPs1 ? (state.ps1Workspace.result || {}) : (state.workspace.result || {});
+    const biosSourceReady = isPs1
+      ? Boolean(state.ps1Bios?.validForDuckStation)
+      : Boolean(state.biosScan?.best?.validForPcsx2);
     const biosReady = Boolean(ws.biosReady);
-    const emulatorReady = Boolean(getDetectedPcsx2Path());
+    const emulatorPath = isPs1 ? getDetectedDuckStationPath() : getDetectedPcsx2Path();
+    const emulatorReady = Boolean(emulatorPath);
     const gamesReady = Boolean(ws.gamesExists);
+    const emulatorName = isPs1 ? 'DuckStation' : 'PCSX2';
+    const consoleName = isPs1 ? 'PlayStation' : 'PlayStation 2';
 
     return {
       html: `
         <div class="completion">
           <div class="completion-ring">✓</div>
-          <div class="kicker">PS2-EM EasySetup v0.4</div>
-          <h2>Your setup is actually assembled.</h2>
-          <p class="lead">This isn't just a checklist anymore — EasySetup validated the dump, prepared the PCSX2 folders and checked your Windows hardware.</p>
+          <div class="kicker">PS-EM EasySetup v0.5 · ${consoleName}</div>
+          <h2>Your ${consoleName} setup is assembled.</h2>
+          <p class="lead">PS-EM validated the BIOS, prepared ${emulatorName}, built the game workspace and checked your Windows controllers.</p>
         </div>
 
         <div class="final-dashboard">
-          <div class="dashboard-item ${state.biosScan?.best?.validForPcsx2 ? 'ok' : 'no'}">
-            <span>BIOS SOURCE</span><strong>${state.biosScan?.best?.validForPcsx2 ? '✓ Verified' : '— Missing'}</strong>
-            <small>${escapeHtml(state.biosScan?.best?.consoleModel || '')}</small>
+          <div class="dashboard-item ${biosSourceReady ? 'ok' : 'no'}">
+            <span>BIOS SOURCE</span><strong>${biosSourceReady ? '✓ Verified' : '— Missing'}</strong>
+            <small>${escapeHtml(isPs1 ? (state.ps1Bios?.model || state.ps1Bios?.name || '') : (state.biosScan?.best?.consoleModel || ''))}</small>
           </div>
           <div class="dashboard-item ${biosReady ? 'ok' : 'no'}">
-            <span>PCSX2 BIOS</span><strong>${biosReady ? '✓ Ready' : '— Not prepared'}</strong>
+            <span>${emulatorName.toUpperCase()} BIOS</span><strong>${biosReady ? '✓ Ready' : '— Not prepared'}</strong>
             <small>${escapeHtml(ws.biosPath || '')}</small>
           </div>
           <div class="dashboard-item ${emulatorReady ? 'ok' : 'no'}">
-            <span>PCSX2</span><strong>${emulatorReady ? '✓ Detected' : '— Missing'}</strong>
-            <small>${escapeHtml(getDetectedPcsx2Path())}</small>
+            <span>${emulatorName.toUpperCase()}</span><strong>${emulatorReady ? '✓ Detected' : '— Missing'}</strong>
+            <small>${escapeHtml(emulatorPath)}</small>
           </div>
           <div class="dashboard-item ${gamesReady ? 'ok' : 'no'}">
             <span>GAME LIBRARY</span><strong>${gamesReady ? '✓ Ready' : '— Missing'}</strong>
@@ -801,24 +1159,23 @@ const views = {
           </div>
           <div class="dashboard-item ${controllers.length ? 'ok' : 'neutral'}">
             <span>CONTROLLERS</span><strong>${controllers.length ? `✓ ${controllers.length} detected` : 'Optional'}</strong>
-            <small>Final mapping is done in PCSX2.</small>
+            <small>Final mapping is done in ${emulatorName}.</small>
           </div>
           <div class="dashboard-item neutral">
-            <span>USB</span><strong>${state.selectedUsbRoot ? '✓ Used for dump' : 'Not required'}</strong>
-            <small>${escapeHtml(state.selectedUsbRoot)}</small>
+            <span>CONSOLE</span><strong>${isPs1 ? 'PS1' : 'PS2'}</strong>
+            <small>${consoleName}</small>
           </div>
         </div>
 
         <div class="inline-actions finish-actions">
-          ${emulatorReady ? actionButton('Launch PCSX2', 'launch-pcsx2', 'primary') : ''}
-          ${gamesReady ? actionButton('Open Jeux PS2', 'open-games-folder', 'ghost') : ''}
-          ${biosReady ? actionButton('Open BIOS folder', 'open-bios-folder', 'ghost') : ''}
+          ${emulatorReady ? actionButton(`Launch ${emulatorName}`, isPs1 ? 'launch-duckstation' : 'launch-pcsx2', 'primary') : ''}
+          ${gamesReady ? actionButton(`Open Jeux ${isPs1 ? 'PS1' : 'PS2'}`, isPs1 ? 'open-ps1-games-folder' : 'open-games-folder', 'ghost') : ''}
+          ${biosReady ? actionButton('Open BIOS folder', isPs1 ? 'open-ps1-bios-folder' : 'open-bios-folder', 'ghost') : ''}
         </div>
       `,
       next: null
     };
-  }
-};
+  }};
 
 async function scanBiosFolder(folder) {
   state.biosPath = folder;
@@ -847,16 +1204,20 @@ async function refreshUsb() {
 async function refreshPcsx2Setup() {
   state.pcsx2Scan = { status: 'scanning', result: null };
   state.workspace = { status: 'scanning', result: null };
+  state.pcsx2Config = { status: 'scanning', result: null };
   render();
 
   try {
-    const [pcsx2Result, workspaceResult] = await Promise.all([
+
+    const [pcsx2Result, workspaceResult, configResult] = await Promise.all([
       window.easySetup.detectPcsx2(),
-      window.easySetup.workspaceStatus()
+      window.easySetup.workspaceStatus(),
+      window.easySetup.pcsx2ConfigStatus()
     ]);
 
     state.pcsx2Scan = { status: 'ready', result: pcsx2Result };
     state.workspace = { status: 'ready', result: workspaceResult };
+    state.pcsx2Config = { status: 'ready', result: configResult };
 
     if (!state.pcsx2Path && pcsx2Result.installations?.[0]?.path) {
       state.pcsx2Path = pcsx2Result.installations[0].path;
@@ -864,14 +1225,55 @@ async function refreshPcsx2Setup() {
   } catch (error) {
     state.pcsx2Scan = { status: 'error', result: { error: error?.message || 'PCSX2 scan failed.' } };
     state.workspace = { status: 'error', result: null };
+    state.pcsx2Config = { status: 'error', result: null };
   }
 
+  render();
+}
+
+async function refreshPcsx2Config() {
+  state.pcsx2Config = { status: 'scanning', result: null };
+  render();
+
+  const result = await window.easySetup.pcsx2ConfigStatus();
+  state.pcsx2Config = { status: result.ok ? 'ready' : 'error', result };
   render();
 }
 
 async function refreshWorkspace() {
   const result = await window.easySetup.workspaceStatus();
   state.workspace = { status: 'ready', result };
+  render();
+}
+
+async function refreshDuckStationSetup() {
+  state.duckStationScan = { status: 'scanning', result: null };
+  state.ps1Workspace = { status: 'scanning', result: null };
+  render();
+
+  try {
+    const [duckResult, workspaceResult] = await Promise.all([
+      window.easySetup.detectDuckStation(),
+      window.easySetup.ps1WorkspaceStatus()
+    ]);
+
+    state.duckStationScan = { status: 'ready', result: duckResult };
+    state.ps1Workspace = { status: 'ready', result: workspaceResult };
+
+    if (!state.duckStationPath && duckResult.installations?.[0]?.path) {
+      state.duckStationPath = duckResult.installations[0].path;
+    }
+  } catch (error) {
+    state.duckStationScan = { status: 'error', result: { error: error?.message || 'DuckStation scan failed.' } };
+    state.ps1Workspace = { status: 'error', result: null };
+  }
+
+  render();
+}
+
+async function refreshPs1Workspace() {
+  const result = await window.easySetup.ps1WorkspaceStatus();
+  state.ps1Workspace = { status: 'ready', result };
   render();
 }
 
@@ -892,8 +1294,72 @@ async function refreshControllers() {
 async function handleAction(action, dataset = {}) {
   if (views[action]) return go(action);
 
+  if (action === 'choose-ps1') {
+    state.console = 'ps1';
+    go('ps1-bios');
+    return;
+  }
+
+  if (action === 'choose-ps2') {
+    state.console = 'ps2';
+    go('bios-choice');
+    return;
+  }
+
+  if (action === 'select-ps1-bios') {
+    state.ps1Bios = { loading: true };
+    render();
+    const result = await window.easySetup.selectPs1Bios(state.language);
+    state.ps1Bios = result || null;
+    render();
+    return;
+  }
+
+  if (action === 'refresh-duckstation') {
+    await refreshDuckStationSetup();
+    return;
+  }
+
+  if (action === 'locate-duckstation') {
+    const result = await window.easySetup.selectDuckStationExe(state.language);
+    if (result?.ok) {
+      state.duckStationPath = result.path;
+      render();
+    }
+    return;
+  }
+
+  if (action === 'launch-duckstation') {
+    const executable = getDetectedDuckStationPath();
+    if (executable) await window.easySetup.openPath(executable);
+    return;
+  }
+
+  if (action === 'copy-ps1-bios') {
+    if (!state.ps1Bios?.path) return;
+    state.ps1BiosCopyResult = await window.easySetup.copyPs1Bios(state.ps1Bios.path);
+    await refreshPs1Workspace();
+    return;
+  }
+
+  if (action === 'create-ps1-games-folder') {
+    state.ps1GameFolderResult = await window.easySetup.createPs1GameFolder();
+    await refreshPs1Workspace();
+    return;
+  }
+
+  if (action === 'open-ps1-bios-folder') {
+    if (state.ps1Workspace.result?.biosPath) await window.easySetup.openPath(state.ps1Workspace.result.biosPath);
+    return;
+  }
+
+  if (action === 'open-ps1-games-folder') {
+    if (state.ps1Workspace.result?.gamesPath) await window.easySetup.openPath(state.ps1Workspace.result.gamesPath);
+    return;
+  }
+
   if (action === 'select-bios') {
-    const folder = await window.easySetup.selectFolder('Select your PS2 BIOS folder');
+    const folder = await window.easySetup.selectFolder(tr('Select your PS2 BIOS folder'));
     if (folder) await scanBiosFolder(folder);
     return;
   }
@@ -914,7 +1380,7 @@ async function handleAction(action, dataset = {}) {
     if (!state.selectedUsbRoot) return;
     state.usbPrepareResult = { pending: true };
     render();
-    const result = await window.easySetup.prepareUsbBiosDrain(state.selectedUsbRoot, false);
+    const result = await window.easySetup.prepareUsbBiosDrain(state.selectedUsbRoot, false, state.language);
     state.usbPrepareResult = result;
     await refreshUsb();
     return;
@@ -922,7 +1388,7 @@ async function handleAction(action, dataset = {}) {
 
   if (action === 'replace-biosdrain') {
     if (!state.selectedUsbRoot) return;
-    const result = await window.easySetup.prepareUsbBiosDrain(state.selectedUsbRoot, true);
+    const result = await window.easySetup.prepareUsbBiosDrain(state.selectedUsbRoot, true, state.language);
     state.usbPrepareResult = result;
     await refreshUsb();
     return;
@@ -938,10 +1404,21 @@ async function handleAction(action, dataset = {}) {
     return;
   }
 
+  if (action === 'rescan-pcsx2-config') {
+    await refreshPcsx2Config();
+    return;
+  }
+
+  if (action === 'configure-pcsx2-library') {
+    state.pcsx2ConfigResult = await window.easySetup.configurePcsx2GameLibrary(state.language);
+    await refreshPcsx2Config();
+    return;
+  }
+
   if (action === 'install-pcsx2-winget') {
     state.pcsx2Install = { status: 'installing', result: null };
     render();
-    const result = await window.easySetup.installPcsx2Winget();
+    const result = await window.easySetup.installPcsx2Winget(state.language);
     state.pcsx2Install = { status: 'done', result };
 
     if (result?.ok) {
@@ -953,7 +1430,7 @@ async function handleAction(action, dataset = {}) {
   }
 
   if (action === 'locate-pcsx2') {
-    const result = await window.easySetup.selectPcsx2Exe();
+    const result = await window.easySetup.selectPcsx2Exe(state.language);
     if (result?.ok) {
       state.pcsx2Path = result.path;
       render();
@@ -1005,6 +1482,7 @@ async function handleAction(action, dataset = {}) {
   }
 
   if (action === 'open-pcsx2') await window.easySetup.openExternal(officialLinks.pcsx2);
+  if (action === 'open-duckstation') await window.easySetup.openExternal(officialLinks.duckstation);
   if (action === 'open-biosdrain') await window.easySetup.openExternal(officialLinks.biosdrain);
   if (action === 'open-freedvdboot') await window.easySetup.openExternal(officialLinks.freedvdboot);
 }
@@ -1030,14 +1508,15 @@ function render() {
   renderSteps();
 
   const view = views[state.route]();
-  screen.innerHTML = view.html;
+  screen.innerHTML = translateHtml(view.html);
 
+  backButton.textContent = tr('Back');
   backButton.disabled = state.history.length === 0;
   backButton.onclick = back;
 
   if (view.next) {
     nextButton.style.display = '';
-    nextButton.textContent = view.next.label;
+    nextButton.textContent = tr(view.next.label);
     nextButton.disabled = Boolean(view.next.disabled);
     nextButton.onclick = view.next.onClick;
   } else {
@@ -1045,6 +1524,23 @@ function render() {
     nextButton.disabled = false;
     nextButton.onclick = null;
   }
+
+  const languageLabel = document.getElementById('languageLabel');
+  if (languageLabel) languageLabel.textContent = tr('Language');
+
+  const sidebarTagline = document.querySelector('.sidebar-note span');
+  if (sidebarTagline) sidebarTagline.textContent = tr('PS1 + PS2 multi-console');
+
+  document.querySelectorAll('[data-language]').forEach((element) => {
+    element.classList.toggle('active', element.dataset.language === state.language);
+    element.addEventListener('click', () => {
+      const language = element.dataset.language;
+      if (language !== 'fr' && language !== 'en') return;
+      state.language = language;
+      localStorage.setItem('psem.language', language);
+      render();
+    });
+  });
 
   document.querySelectorAll('[data-action]').forEach((element) => {
     element.addEventListener('click', () => handleAction(element.dataset.action, element.dataset));

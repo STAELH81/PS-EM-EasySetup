@@ -2,9 +2,7 @@ name: Syntax check
 
 on:
   pull_request:
-  push:
-    branches:
-      - v0.3-pcsx2-setup
+  workflow_dispatch:
 
 jobs:
   check:
