@@ -163,7 +163,7 @@ async function detectUsbDrives() {
     "  }",
     "}",
     "$items | ConvertTo-Json -Compress"
-  ].join('\\n');
+  ].join('\n');
 
   try {
     const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
