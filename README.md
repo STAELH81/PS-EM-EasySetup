@@ -8,57 +8,66 @@ PS2-EM EasySetup is meant to take a beginner from “I want to emulate my PS2 ga
 
 The application does **not** include or distribute Sony BIOS files or game images.
 
-## v0.2 — hardware-aware prototype
+## v0.3 — PC-side automation
 
-v0.2 turns the first static wizard into an assistant that can actually inspect the local machine.
+v0.3 keeps the real BIOS/USB inspection from v0.2 and starts preparing the Windows/PCSX2 side automatically.
 
-### BIOS validation
+### PCSX2 detection
 
-When a BIOS folder is selected, EasySetup now:
+EasySetup now:
 
-- Scans for BIOSDrain-style `.rom0`, `.rom1`, `.rom2`, `.nvm` and `.mec` files.
-- Groups matching files by dump name/model.
-- Extracts a recognizable `SCPH-xxxxx` model when present.
-- Checks that ROM0 has a plausible PS2 BIOS size.
-- Distinguishes a full BIOSDrain set from a partial-but-usable ROM0 folder.
-- Prevents the wizard from continuing when no usable ROM0 is detected.
+- Checks common PCSX2 installation locations.
+- Checks whether `pcsx2-qt.exe` is available through PATH.
+- Lets portable-build users locate the executable manually.
+- Can launch the detected PCSX2 executable directly.
 
-### USB detection
+### Workspace preparation
 
-On Windows, EasySetup can now:
+EasySetup can now prepare the standard Documents-side workspace:
 
-- Detect connected removable drives.
-- Display drive letter, label, capacity and free space.
-- Detect FAT32.
-- Detect MBR when Windows exposes the disk partition style.
-- Detect `biosdrain.elf` at the USB root.
-- Detect a BIOS dump placed at the USB root.
-- Let the user select the USB they intend to use.
+- `Documents\PCSX2\bios`
+- `Documents\Jeux PS2`
 
-USB inspection is deliberately read-only. EasySetup **does not format drives automatically**.
+The user explicitly triggers every file-system change.
 
-### Guided dumping
+For the BIOS destination, EasySetup:
 
-The BIOS path now includes:
+- Re-validates the source BIOS before copying.
+- Creates the destination folder when needed.
+- Copies only the BIOS files found in the selected dump.
+- Skips same-size files that already exist.
+- Refuses to overwrite same-name files with a different size.
+- Re-scans the destination and only marks it ready if a usable ROM0 is present.
 
-- Hardware checklist.
-- USB detection before the dumping method.
-- FreeMcBoot detection help.
-- FreeMcBoot / uLaunchELF path.
-- FreeDVDBoot path with fields for PS2 model and DVD Player version.
-- Final BIOS verification after the dump.
-- Reminder to store the dump somewhere permanent before reusing the USB drive.
+For the games folder, EasySetup can create `Documents\Jeux PS2` and open it in Explorer.
 
-### PCSX2 guidance
+### Controller scan
 
-The wizard still covers:
+On Windows, EasySetup now performs a best-effort controller scan using Windows device information and shows likely connected gamepads/controllers before the user enters PCSX2 controller mapping.
 
-- PCSX2 download/setup.
-- BIOS folder selection.
-- Game library folder.
-- Controller mapping.
-- Local two-player setup.
-- Optional RetroAchievements.
+Final button mapping remains inside PCSX2 because device APIs and mappings vary between controllers.
+
+### Final dashboard
+
+The completion screen now summarizes real state for:
+
+- Verified BIOS source.
+- Prepared PCSX2 BIOS destination.
+- PCSX2 detection.
+- Game-library folder.
+- Controller detection.
+- USB usage.
+
+## Existing v0.2 features
+
+- BIOSDrain-style `.rom0`, `.rom1`, `.rom2`, `.nvm` and `.mec` validation.
+- SCPH model extraction from dump filenames.
+- ROM0 sanity checks.
+- Removable USB detection.
+- FAT32 / MBR detection.
+- `biosdrain.elf` detection.
+- BIOS detection at the USB root.
+- FreeMcBoot and FreeDVDBoot guided paths.
 
 ## Run the prototype
 
@@ -67,15 +76,29 @@ Requirements:
 - Windows
 - Node.js / npm
 
-Clone the repository, switch to the development branch, then run:
-
 ```powershell
-git checkout v0.2-bios-usb
+git fetch origin
+git checkout v0.3-pcsx2-setup
+git pull
 npm install
 npm start
 ```
 
-> With recent Node versions, npm may ask you to approve Electron's install script. The repository also pins a compatible `yauzl` override for the Electron installer path.
+> With recent Node versions, npm may ask you to approve Electron's install script. The repository pins a compatible `yauzl` override for the Electron installer path.
+
+## Safety philosophy
+
+EasySetup should automate boring checks, not silently make destructive decisions.
+
+Current rules:
+
+- No BIOS files are bundled.
+- No game images are bundled.
+- USB scanning is read-only.
+- USB formatting is never automatic.
+- BIOS copies are user-triggered.
+- Existing same-name BIOS files with different sizes are not overwritten.
+- FreeDVDBoot compatibility is not guessed.
 
 ## Project structure
 
@@ -91,29 +114,16 @@ src/
     └── app.js
 ```
 
-## Safety philosophy
-
-EasySetup should automate boring checks, not dangerous disk operations.
-
-Current rules:
-
-- No BIOS files are bundled.
-- No game images are bundled.
-- BIOS/USB inspection is read-only.
-- USB formatting is not automatic.
-- FreeDVDBoot compatibility is not guessed; users are pointed to the official project for their exact console/DVD version.
-
 ## Roadmap
 
 Likely next steps:
 
-- PCSX2 installation detection.
-- Automatic game-folder creation.
-- Optional PCSX2 configuration helpers.
-- Better USB preparation guidance.
+- More robust PCSX2 portable-install discovery.
+- Optional helper for adding the game folder inside PCSX2.
+- BIOSDrain copy/preparation helpers for the selected USB drive.
 - Windows installer / portable release packaging.
 - French/English language support.
-- More detailed troubleshooting screens.
+- Troubleshooting and recovery screens.
 
 ## License
 
