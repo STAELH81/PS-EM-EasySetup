@@ -858,6 +858,47 @@ function getIniListValues(lines, sectionName, keys) {
   return values;
 }
 
+function getIniValue(lines, sectionName, keyName) {
+  const bounds = getIniSectionBounds(lines, sectionName);
+  if (bounds.start < 0) return null;
+
+  const wanted = keyName.toLowerCase();
+
+  for (let index = bounds.start + 1; index < bounds.end; index++) {
+    const match = lines[index].match(/^\s*([^=;#]+?)\s*=\s*(.*?)\s*$/);
+    if (!match) continue;
+    if (match[1].trim().toLowerCase() === wanted) return match[2].trim();
+  }
+
+  return null;
+}
+
+function addIniValueIfMissing(content, sectionName, key, value) {
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const current = getIniValue(lines, sectionName, key);
+
+  if (current !== null) {
+    return { content, changed: false, existingValue: current };
+  }
+
+  const bounds = getIniSectionBounds(lines, sectionName);
+
+  if (bounds.start < 0) {
+    if (lines.length && lines[lines.length - 1].trim() !== '') lines.push('');
+    lines.push(`[${sectionName}]`);
+    lines.push(`${key} = ${value}`);
+  } else {
+    lines.splice(bounds.end, 0, `${key} = ${value}`);
+  }
+
+  return {
+    content: lines.join(newline),
+    changed: true,
+    existingValue: null
+  };
+}
+
 function addIniListValue(content, sectionName, key, value) {
   const newline = content.includes('\r\n') ? '\r\n' : '\n';
   const lines = content.split(/\r?\n/);
@@ -970,15 +1011,42 @@ async function configurePcsx2GameLibrary(documentsPath) {
 
   try {
     const original = await fs.readFile(settingsPath, 'utf8');
-    const patch = addIniListValue(original, 'GameList', 'RecursivePaths', gamesPath);
+    let updated = original;
 
-    if (!patch.changed) {
+    const gameListPatch = addIniListValue(updated, 'GameList', 'RecursivePaths', gamesPath);
+    updated = gameListPatch.content;
+
+    const biosPath = path.join(documentsPath, 'PCSX2', 'bios');
+    const biosScan = await inspectBiosFolder(biosPath);
+    const biosName = biosScan?.best?.files?.rom0?.name || null;
+
+    let biosFolderPatch = { changed: false, existingValue: null };
+    let biosSelectionPatch = { changed: false, existingValue: null };
+
+    if (biosName) {
+      biosFolderPatch = addIniValueIfMissing(updated, 'Folders', 'Bios', biosPath);
+      updated = biosFolderPatch.content;
+
+      biosSelectionPatch = addIniValueIfMissing(updated, 'Filenames', 'BIOS', biosName);
+      updated = biosSelectionPatch.content;
+    }
+
+    const changed = updated !== original;
+
+    if (!changed) {
       return {
         ok: true,
         changed: false,
         alreadyConfigured: true,
         settingsPath,
         gamesPath,
+        biosPath,
+        biosName,
+        gameListConfigured: true,
+        biosFolderConfigured: Boolean(biosName),
+        biosSelectionConfigured: Boolean(biosName),
+        existingBiosFolder: biosFolderPatch.existingValue,
+        existingBiosSelection: biosSelectionPatch.existingValue,
         backupPath: null
       };
     }
@@ -986,7 +1054,7 @@ async function configurePcsx2GameLibrary(documentsPath) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupPath = `${settingsPath}.psem-backup-${stamp}`;
     await fs.copyFile(settingsPath, backupPath);
-    await fs.writeFile(settingsPath, patch.content, 'utf8');
+    await fs.writeFile(settingsPath, updated, 'utf8');
 
     return {
       ok: true,
@@ -994,6 +1062,13 @@ async function configurePcsx2GameLibrary(documentsPath) {
       alreadyConfigured: false,
       settingsPath,
       gamesPath,
+      biosPath,
+      biosName,
+      gameListConfigured: true,
+      biosFolderConfigured: biosName ? (biosFolderPatch.changed || normalizeWindowsPath(biosFolderPatch.existingValue) === normalizeWindowsPath(biosPath)) : false,
+      biosSelectionConfigured: biosName ? (biosSelectionPatch.changed || String(biosSelectionPatch.existingValue || '').toLowerCase() === biosName.toLowerCase()) : false,
+      existingBiosFolder: biosFolderPatch.existingValue,
+      existingBiosSelection: biosSelectionPatch.existingValue,
       backupPath
     };
   } catch (error) {
