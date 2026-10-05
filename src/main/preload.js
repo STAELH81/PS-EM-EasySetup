@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('easySetup', {
   createPs1GameFolder: () => ipcRenderer.invoke('create-ps1-game-folder'),
   copyPs1Bios: (sourceFile) => ipcRenderer.invoke('copy-ps1-bios', sourceFile),
   workspaceStatus: () => ipcRenderer.invoke('workspace-status'),
+  pcsx2ConfigStatus: () => ipcRenderer.invoke('pcsx2-config-status'),
+  configurePcsx2GameLibrary: () => ipcRenderer.invoke('configure-pcsx2-game-library'),
   createGameFolder: () => ipcRenderer.invoke('create-game-folder'),
   copyBiosToPcsx2: (sourceFolder) => ipcRenderer.invoke('copy-bios-to-pcsx2', sourceFolder),
   detectControllers: () => ipcRenderer.invoke('detect-controllers'),
