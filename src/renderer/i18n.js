@@ -220,7 +220,19 @@
     'Generic Gamepad': 'Manette générique',
     'Connected': 'Connectée',
     'Bluetooth': 'Bluetooth',
-    'USB': 'USB'
+    'USB': 'USB',
+    'PCSX2 defaults are already prepared': 'Les réglages PCSX2 sont déjà prêts',
+    'Finish PCSX2 automatically': 'Terminer la configuration PCSX2 automatiquement',
+    'BIOS SELECTION': 'SÉLECTION DU BIOS',
+    'Jeux PS2 configured': 'Jeux PS2 configuré',
+    'Jeux PS2 not added yet': 'Jeux PS2 pas encore ajouté',
+    'BIOS configured': 'BIOS configuré',
+    'BIOS not selected yet': 'BIOS pas encore sélectionné',
+    'Configure BIOS + library': 'Configurer BIOS + bibliothèque',
+    'PCXS2 was prepared.': 'PCSX2 a été préparé.',
+    'PCSX2 was prepared. Game library and missing BIOS defaults were updated safely. Backup:': 'PCSX2 a été préparé. La bibliothèque de jeux et les réglages BIOS manquants ont été ajoutés en sécurité. Sauvegarde :',
+    'PS-EM can fill missing defaults in PCSX2.ini: the recursive': 'PS-EM peut compléter les réglages manquants dans PCSX2.ini : le chemin récursif',
+    'library path and, when available, the verified PS2 BIOS. Existing custom BIOS choices are preserved. A timestamped backup is created before any change.': 'de la bibliothèque et, lorsqu’il est disponible, le BIOS PS2 validé. Les choix BIOS personnalisés existants sont conservés. Une sauvegarde horodatée est créée avant toute modification.'
   };
 
   const dictionaries = { en: {}, fr };
