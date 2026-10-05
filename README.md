@@ -1,126 +1,111 @@
-# PS2-EM EasySetup
+# PS-EM EasySetup
 
-A guided Windows setup assistant for dumping a PS2 BIOS and configuring PCSX2.
+A guided Windows setup assistant for PlayStation and PlayStation 2 emulation.
 
 ## Goal
 
-PS2-EM EasySetup is meant to take a beginner from “I want to emulate my PS2 games” to a clean PCSX2 setup without requiring them to already understand BIOS dumping, FreeMcBoot, FreeDVDBoot, game folders, controller mapping, or RetroAchievements.
+PS-EM EasySetup is meant to take a beginner from “I own the console / BIOS and want to emulate my games” to a clean emulator setup without requiring them to already understand BIOS formats, emulator folders, controller mapping, FreeMcBoot or FreeDVDBoot.
 
 The application does **not** include or distribute Sony BIOS files or game images.
 
-## v0.4 — USB preparation + first Windows installer
+## v0.5 — PS1 + PS2
 
-v0.4 pushes EasySetup closer to the original idea: launch one utility and let it handle the boring parts while keeping destructive operations out of the app.
+v0.5 turns the old PS2-only project into a multi-console PlayStation setup utility.
 
-### Prepare a PS2 USB with BIOSDrain
+### PlayStation (PS1)
 
-After selecting a removable drive, EasySetup can now:
+The new PS1 path includes:
 
-- Verify that Windows still sees it as removable.
-- Refuse to write if the drive is not FAT32.
-- Query the official `F0bes/biosdrain` GitHub release.
-- Download the latest official `biosdrain.elf`.
-- Compute a SHA-256 of the downloaded file.
-- Compare it with an existing `biosdrain.elf` on the USB.
-- Leave an existing different file untouched unless the user explicitly chooses replacement.
-- Back up a replaced file as `biosdrain.elf.bak`.
-- Never format the USB drive.
+- A console selector on startup.
+- Local PS1 BIOS selection.
+- BIOS validation using the expected 512 KB retail BIOS size.
+- SHA-256 calculation shown locally for the selected BIOS.
+- SCPH model extraction when the filename contains one.
+- DuckStation detection from common Windows install locations and the registry.
+- Manual DuckStation executable selection for portable builds.
+- Official DuckStation download link.
+- User-triggered BIOS copy to `Documents\DuckStation\bios`.
+- Protection against silently overwriting a different same-name BIOS.
+- Automatic creation of `Documents\Jeux PS1`.
+- Shared Windows controller scan.
+- A PS1-specific final setup dashboard.
 
-The write action has its own confirmation dialog.
+### PlayStation 2 (PS2)
 
-### PCSX2 installation assistance
+The complete v0.4 PS2 flow remains available:
 
-If PCSX2 is missing, EasySetup now checks whether Windows Package Manager is available.
-
-When WinGet is available, the user can explicitly ask EasySetup to install:
-
-```text
-PCSX2Team.PCSX2
-```
-
-EasySetup then rescans for PCSX2. Portable installations can still be located manually, and the official PCSX2 website remains available as a fallback.
-
-### Existing PC-side automation
-
-v0.4 keeps the v0.3 features:
-
-- PCSX2 detection and launching.
-- Verified BIOS copy to `Documents\PCSX2\bios`.
-- No overwrite of different same-name BIOS files.
+- BIOSDrain dump validation.
+- Removable USB detection.
+- FAT32 / MBR checks.
+- Official BIOSDrain download + USB preparation.
+- FreeMcBoot / FreeDVDBoot guidance.
+- PCSX2 detection.
+- Optional PCSX2 installation through WinGet.
+- BIOS copy to `Documents\PCSX2\bios`.
 - Automatic creation of `Documents\Jeux PS2`.
 - Controller detection.
-- Final real-state dashboard.
+- Final setup dashboard.
 
-### First real Windows installer
-
-The project now uses `electron-builder` with an NSIS target.
-
-Local build:
-
-```powershell
-npm install
-npm run build
-```
-
-Expected output:
-
-```text
-dist\PS2-EM EasySetup-Setup-0.4.0.exe
-```
-
-A GitHub Actions workflow also builds the Windows installer and uploads it as the `PS2-EM-EasySetup-Windows` workflow artifact.
-
-## Run from source
+## Run the v0.5 branch
 
 ```powershell
 git fetch origin
-git checkout v0.4-usb-packaging
+git checkout v0.5-multiconsole
 git pull
 npm install
 npm start
 ```
 
-## Safety philosophy
+Because the repository was renamed, existing clones can update their remote with:
 
-EasySetup automates boring checks, not destructive disk operations.
+```powershell
+git remote set-url origin https://github.com/STAELH81/PS-EM-EasySetup.git
+```
 
-Current rules:
+## Windows installer
 
-- No BIOS files are bundled.
-- No game images are bundled.
-- USB formatting is never automatic.
-- BIOSDrain comes from its official GitHub release at runtime.
-- USB writes require an explicit user action and confirmation.
-- A conflicting `biosdrain.elf` is not overwritten without another explicit confirmation.
-- BIOS copies are user-triggered.
-- Existing same-name BIOS files with different sizes are not overwritten.
-- PCSX2 installation through WinGet requires confirmation.
-- FreeDVDBoot compatibility is not guessed.
+```powershell
+npm run build
+```
 
-## Project structure
+The installer name is versioned automatically, for example:
 
 ```text
-src/
-├── main/
-│   ├── main.js
-│   ├── preload.js
-│   └── system.js
-└── renderer/
-    ├── index.html
-    ├── styles.css
-    └── app.js
+PS-EM EasySetup-Setup-0.5.0.exe
 ```
+
+GitHub Actions builds the Windows installer for pull requests and the release workflow publishes a versioned GitHub Release when a new package version reaches `main`.
+
+## Safety philosophy
+
+PS-EM automates repetitive checks, not destructive decisions.
+
+- No Sony BIOS is bundled.
+- No game image is bundled.
+- BIOS inspection happens locally.
+- USB formatting is never automatic.
+- BIOSDrain comes from its official GitHub release.
+- USB writes require explicit confirmation.
+- Existing conflicting BIOS files are not overwritten silently.
+- PCSX2 installation requires explicit confirmation.
+- FreeDVDBoot compatibility is not guessed.
+
+## Current emulator targets
+
+| Console | Emulator |
+| --- | --- |
+| PlayStation | DuckStation |
+| PlayStation 2 | PCSX2 |
 
 ## Roadmap
 
-Likely next steps:
-
-- Download/progress UI rather than waiting on a single action.
-- More robust portable PCSX2 discovery.
-- Optional helper for PCSX2 game-library configuration.
-- French/English localization.
-- Custom application/installer icon.
-- Release automation with signed builds when the project is mature enough.
+- Better PS1 BIOS metadata / region display.
+- More robust DuckStation portable discovery.
+- Optional DuckStation installation automation.
+- Shared console modules instead of console-specific logic living in the main renderer.
+- French / English localization.
+- Custom application and installer icon.
+- More PlayStation generations later.
 
 ## License
 
