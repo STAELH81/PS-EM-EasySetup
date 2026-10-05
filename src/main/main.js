@@ -11,6 +11,8 @@ const {
   detectControllers,
   installPcsx2WithWinget,
   prepareUsbWithBiosDrain,
+  getPcsx2ConfigStatus,
+  configurePcsx2GameLibrary,
   inspectPs1BiosFile,
   detectDuckStation,
   validateDuckStationExecutable,
@@ -115,6 +117,29 @@ ipcMain.handle('copy-ps1-bios', async (_event, sourceFile) => {
 
 ipcMain.handle('workspace-status', async () => {
   return getWorkspaceStatus(app.getPath('documents'));
+});
+
+ipcMain.handle('pcsx2-config-status', async () => {
+  return getPcsx2ConfigStatus(app.getPath('documents'));
+});
+
+ipcMain.handle('configure-pcsx2-game-library', async (event) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  const confirmation = await dialog.showMessageBox(owner, {
+    type: 'question',
+    buttons: ['Configure PCSX2', 'Cancel'],
+    defaultId: 1,
+    cancelId: 1,
+    title: 'Configure PCSX2 game library',
+    message: 'Add Documents\\Jeux PS2 to the PCSX2 game list?',
+    detail: 'EasySetup will close nothing and overwrite nothing blindly. If PCSX2.ini needs a change, a timestamped backup will be created first.'
+  });
+
+  if (confirmation.response !== 0) {
+    return { ok: false, cancelled: true };
+  }
+
+  return configurePcsx2GameLibrary(app.getPath('documents'));
 });
 
 ipcMain.handle('create-game-folder', async () => {
