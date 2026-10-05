@@ -1,0 +1,19 @@
+{
+  "name": "ps2-em-easysetup",
+  "version": "0.1.0",
+  "description": "Guided Windows setup assistant for dumping a PS2 BIOS and configuring PCSX2.",
+  "main": "src/main/main.js",
+  "author": "STAELH81",
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^42.11.4"
+  },
+  "overrides": {
+    "yauzl": "^3.3.1"
+  }
+}
