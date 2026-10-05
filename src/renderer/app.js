@@ -1,6 +1,7 @@
 const state = {
   route: 'welcome',
   history: [],
+  language: window.PSEM_I18N?.getInitialLanguage?.() || 'en',
   console: null,
   ps1Bios: null,
   duckStationScan: { status: 'idle', result: null },
@@ -21,7 +22,9 @@ const state = {
   gameFolderResult: null,
   controllerScan: { status: 'idle', result: null },
   usbPrepareResult: null,
-  pcsx2Install: { status: 'idle', result: null }
+  pcsx2Install: { status: 'idle', result: null },
+  pcsx2Config: { status: 'idle', result: null },
+  pcsx2ConfigResult: null
 };
 
 const steps = [
@@ -44,6 +47,14 @@ const officialLinks = {
   freedvdboot: 'https://github.com/CTurt/FreeDVDBoot',
   duckstation: 'https://github.com/stenzek/duckstation/releases/tag/latest'
 };
+
+function tr(value) {
+  return window.PSEM_I18N?.t(value, state.language) ?? value;
+}
+
+function translateHtml(value) {
+  return window.PSEM_I18N?.html(value, state.language) ?? value;
+}
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -84,7 +95,7 @@ function renderSteps() {
     const displayLabel = id === 'emulator'
       ? (state.console === 'ps1' ? 'DuckStation' : state.console === 'ps2' ? 'PCSX2' : 'Emulator')
       : label;
-    return `<div class="${cls}"><span class="step-index">${badge}</span><span>${displayLabel}</span></div>`;
+    return `<div class="${cls}"><span class="step-index">${badge}</span><span>${tr(displayLabel)}</span></div>`;
   }).join('');
 }
 
@@ -623,6 +634,70 @@ function renderWorkspace() {
   `;
 }
 
+function renderPcsx2Automation() {
+  if (state.pcsx2Config.status === 'scanning') {
+    return `
+      <div class="setup-card">
+        <div class="setup-card-head">
+          <div><span class="eyebrow">PCSX2 CONFIG</span><strong>Checking PCSX2 game-list configuration…</strong></div>
+          <div class="spinner mini-spinner"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  const config = state.pcsx2Config.result;
+  if (!config) return '';
+
+  const result = state.pcsx2ConfigResult;
+  let resultHtml = '';
+
+  if (result?.cancelled) {
+    resultHtml = '<div class="operation-result">Configuration cancelled.</div>';
+  } else if (result?.ok) {
+    resultHtml = result.changed
+      ? `<div class="operation-result good">✓ Jeux PS2 was added to PCSX2. Backup: <code>${escapeHtml(result.backupPath || '')}</code></div>`
+      : '<div class="operation-result good">✓ PCSX2 already scans Jeux PS2.</div>';
+  } else if (result?.pcsx2Running) {
+    resultHtml = '<div class="operation-result bad">⚠ Close PCSX2 first, then try again.</div>';
+  } else if (result?.needsFirstLaunch) {
+    resultHtml = '<div class="operation-result bad">⚠ Launch PCSX2 once and finish its first-run wizard, then Rescan.</div>';
+  } else if (result?.error) {
+    resultHtml = `<div class="operation-result bad">⚠ ${escapeHtml(result.error)}</div>`;
+  }
+
+  if (!config.settingsFound) {
+    return `
+      <div class="setup-card">
+        <div class="setup-card-head">
+          <div><span class="eyebrow">PCSX2 CONFIG</span><strong>First launch still needed</strong></div>
+          ${statusPill('WAITING', 'warning')}
+        </div>
+        <p>PS-EM could not find PCSX2.ini yet. Launch PCSX2 once, finish the first-run wizard, close it, then press Rescan.</p>
+        ${resultHtml}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="setup-card ${config.gameListConfigured ? 'ready' : ''}">
+      <div class="setup-card-head">
+        <div>
+          <span class="eyebrow">PCSX2 CONFIG</span>
+          <strong>${config.gameListConfigured ? 'Jeux PS2 is already in the PCSX2 library' : 'Add Jeux PS2 to PCSX2 automatically'}</strong>
+        </div>
+        ${statusPill(config.gameListConfigured ? 'READY' : 'OPTIONAL', config.gameListConfigured ? 'success' : 'neutral')}
+      </div>
+      <p>PS-EM can safely add <code>${escapeHtml(config.gamesPath || '')}</code> as a recursive PCSX2 game-list path. A timestamped backup of PCSX2.ini is created before any change.</p>
+      <div class="inline-actions">
+        ${config.gameListConfigured ? '' : actionButton('Configure automatically', 'configure-pcsx2-library', 'primary', 'compact')}
+        ${actionButton('Rescan config', 'rescan-pcsx2-config', 'ghost', 'compact')}
+      </div>
+      ${resultHtml}
+    </div>
+  `;
+}
+
 function pcsx2Ready() {
   const ws = state.workspace.result;
   return Boolean(getDetectedPcsx2Path() && ws?.gamesExists && ws?.biosReady);
@@ -665,9 +740,12 @@ function renderControllers() {
           <div class="controller-number">P${index + 1}</div>
           <div>
             <strong>${escapeHtml(controller.name)}</strong>
-            <span>${escapeHtml(controller.manufacturer || controller.pnpClass || 'Windows game controller')}</span>
+            <span>${escapeHtml(controller.profile || controller.manufacturer || controller.pnpClass || 'Windows game controller')} · ${escapeHtml(controller.connection || 'Connected')}</span>
           </div>
-          ${statusPill('CONNECTED', 'success')}
+          <div class="controller-badges">
+            ${statusPill(String(controller.type || 'generic').toUpperCase(), controller.type === 'generic' ? 'neutral' : 'success')}
+            ${statusPill('CONNECTED', 'success')}
+          </div>
         </div>
       `).join('')}
     </div>
@@ -677,11 +755,19 @@ function renderControllers() {
 const views = {
   welcome: () => ({
     html: `
-      <div class="hero">
+      <div class="hero onboarding-hero">
         <div>
           <div class="kicker">PS-EM EasySetup · v0.5</div>
-          <h2>One EasySetup.<br><span class="gradient-text">Two generations of PlayStation.</span></h2>
-          <p class="lead">PS-EM now supports PlayStation and PlayStation 2 setup flows: local BIOS validation, emulator preparation, game folders and controller checks.</p>
+          <h2>Configure your PlayStation setup without the setup headache.</h2>
+          <p class="lead">PS-EM guides you from your own BIOS to a clean PS1 or PS2 emulator setup, while keeping every sensitive file local.</p>
+
+          <div class="welcome-language">
+            <span>Language</span>
+            <div class="language-switcher large">
+              <button type="button" data-language="fr">Français</button>
+              <button type="button" data-language="en">English</button>
+            </div>
+          </div>
         </div>
         <div class="hero-orbit" aria-hidden="true">
           <span class="shape triangle">△</span>
@@ -691,11 +777,14 @@ const views = {
           <div class="hero-core">PS<br><small>EASYSETUP</small></div>
         </div>
       </div>
-      <div class="feature-grid">
-        <div class="feature"><strong>PlayStation</strong><span>Validate a 512 KB PS1 BIOS and prepare DuckStation.</span></div>
-        <div class="feature"><strong>PlayStation 2</strong><span>Full BIOSDrain / FreeMcBoot / FreeDVDBoot + PCSX2 flow.</span></div>
-        <div class="feature"><strong>Shared setup engine</strong><span>Game folders, controller scan and final status dashboard.</span></div>
+
+      <div class="onboarding-steps">
+        <div><span>01</span><strong>Choose your console</strong><small>PlayStation or PlayStation 2.</small></div>
+        <div><span>02</span><strong>Validate your own BIOS</strong><small>Everything stays local on your PC.</small></div>
+        <div><span>03</span><strong>Prepare the emulator</strong><small>Folders, game library and controller checks.</small></div>
       </div>
+
+      <div class="info-box success-box">No uploads. No bundled BIOS. No destructive formatting.</div>
     `,
     next: { label: 'Choose a console', onClick: () => go('console-select') }
   }),
@@ -935,6 +1024,7 @@ const views = {
       <div class="setup-stack">
         ${renderPcsx2Detection()}
         ${renderWorkspace()}
+        ${renderPcsx2Automation()}
       </div>
 
       <div class="info-box">
@@ -1102,13 +1192,17 @@ async function refreshPcsx2Setup() {
   render();
 
   try {
-    const [pcsx2Result, workspaceResult] = await Promise.all([
+    state.pcsx2Config = { status: 'scanning', result: null };
+
+    const [pcsx2Result, workspaceResult, configResult] = await Promise.all([
       window.easySetup.detectPcsx2(),
-      window.easySetup.workspaceStatus()
+      window.easySetup.workspaceStatus(),
+      window.easySetup.pcsx2ConfigStatus()
     ]);
 
     state.pcsx2Scan = { status: 'ready', result: pcsx2Result };
     state.workspace = { status: 'ready', result: workspaceResult };
+    state.pcsx2Config = { status: 'ready', result: configResult };
 
     if (!state.pcsx2Path && pcsx2Result.installations?.[0]?.path) {
       state.pcsx2Path = pcsx2Result.installations[0].path;
@@ -1116,8 +1210,18 @@ async function refreshPcsx2Setup() {
   } catch (error) {
     state.pcsx2Scan = { status: 'error', result: { error: error?.message || 'PCSX2 scan failed.' } };
     state.workspace = { status: 'error', result: null };
+    state.pcsx2Config = { status: 'error', result: null };
   }
 
+  render();
+}
+
+async function refreshPcsx2Config() {
+  state.pcsx2Config = { status: 'scanning', result: null };
+  render();
+
+  const result = await window.easySetup.pcsx2ConfigStatus();
+  state.pcsx2Config = { status: result.ok ? 'ready' : 'error', result };
   render();
 }
 
@@ -1285,6 +1389,17 @@ async function handleAction(action, dataset = {}) {
     return;
   }
 
+  if (action === 'rescan-pcsx2-config') {
+    await refreshPcsx2Config();
+    return;
+  }
+
+  if (action === 'configure-pcsx2-library') {
+    state.pcsx2ConfigResult = await window.easySetup.configurePcsx2GameLibrary();
+    await refreshPcsx2Config();
+    return;
+  }
+
   if (action === 'install-pcsx2-winget') {
     state.pcsx2Install = { status: 'installing', result: null };
     render();
@@ -1378,14 +1493,15 @@ function render() {
   renderSteps();
 
   const view = views[state.route]();
-  screen.innerHTML = view.html;
+  screen.innerHTML = translateHtml(view.html);
 
+  backButton.textContent = tr('Back');
   backButton.disabled = state.history.length === 0;
   backButton.onclick = back;
 
   if (view.next) {
     nextButton.style.display = '';
-    nextButton.textContent = view.next.label;
+    nextButton.textContent = tr(view.next.label);
     nextButton.disabled = Boolean(view.next.disabled);
     nextButton.onclick = view.next.onClick;
   } else {
@@ -1393,6 +1509,23 @@ function render() {
     nextButton.disabled = false;
     nextButton.onclick = null;
   }
+
+  const languageLabel = document.getElementById('languageLabel');
+  if (languageLabel) languageLabel.textContent = tr('Language');
+
+  const sidebarTagline = document.querySelector('.sidebar-note span');
+  if (sidebarTagline) sidebarTagline.textContent = tr('PS1 + PS2 multi-console');
+
+  document.querySelectorAll('[data-language]').forEach((element) => {
+    element.classList.toggle('active', element.dataset.language === state.language);
+    element.addEventListener('click', () => {
+      const language = element.dataset.language;
+      if (language !== 'fr' && language !== 'en') return;
+      state.language = language;
+      localStorage.setItem('psem.language', language);
+      render();
+    });
+  });
 
   document.querySelectorAll('[data-action]').forEach((element) => {
     element.addEventListener('click', () => handleAction(element.dataset.action, element.dataset));
