@@ -1508,3 +1508,47 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+
+.config-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+
+.config-status-grid > div {
+  border: 1px solid var(--border-soft);
+  border-radius: 9px;
+  padding: 10px 11px;
+  display: grid;
+  gap: 4px;
+  background: rgba(9, 13, 19, .45);
+}
+
+.config-status-grid > div.ok {
+  border-color: rgba(98, 216, 162, .25);
+  background: rgba(98, 216, 162, .05);
+}
+
+.config-status-grid span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.config-status-grid strong {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.config-status-grid > div.ok strong {
+  color: var(--success);
+}
+
+@media (max-width: 760px) {
+  .config-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
