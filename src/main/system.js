@@ -476,10 +476,12 @@ async function detectControllers() {
 
   const script = [
     "$ErrorActionPreference = 'Stop'",
-    "$pattern = 'controller|gamepad|xbox|dualshock|dualsense|wireless controller|8bitdo|gamesir|pro controller'",
+    "$pattern = 'controller|gamepad|xbox|dualshock|dualsense|wireless controller|8bitdo|gamesir|pro controller|joy-con|joystick'",
+    "$ignore = 'mouse|keyboard|touchpad|consumer control|system control'",
     "$items = Get-CimInstance Win32_PnPEntity | Where-Object {",
-    "  $_.Name -and $_.Status -eq 'OK' -and $_.Name -match $pattern",
-    "} | Select-Object -Unique Name, Manufacturer, PNPClass, DeviceID",
+    "  $_.Name -and $_.Status -eq 'OK' -and",
+    "  $_.Name -match $pattern -and $_.Name -notmatch $ignore",
+    "} | Select-Object Name, Manufacturer, PNPClass, DeviceID",
     "$items | ConvertTo-Json -Compress"
   ].join('\n');
 
@@ -489,14 +491,67 @@ async function detectControllers() {
     const parsed = trimmed ? JSON.parse(trimmed) : [];
     const items = Array.isArray(parsed) ? parsed : [parsed];
 
-    const controllers = items
-      .filter((item) => item?.Name)
-      .map((item) => ({
-        name: String(item.Name || ''),
-        manufacturer: String(item.Manufacturer || ''),
-        pnpClass: String(item.PNPClass || ''),
-        deviceId: String(item.DeviceID || '')
-      }));
+    const seen = new Set();
+    const controllers = [];
+
+    for (const item of items) {
+      if (!item?.Name) continue;
+
+      const name = String(item.Name || '').trim();
+      const manufacturer = String(item.Manufacturer || '').trim();
+      const pnpClass = String(item.PNPClass || '').trim();
+      const deviceId = String(item.DeviceID || '').trim();
+      const key = (deviceId || name).toLowerCase();
+
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+
+      const haystack = `${name} ${manufacturer}`.toLowerCase();
+      let type = 'generic';
+      let profile = 'Generic Gamepad';
+
+      if (/dualsense|wireless controller/.test(haystack) && /sony|playstation|dualsense/.test(haystack)) {
+        type = 'dualsense';
+        profile = 'DualSense';
+      } else if (/dualshock|sony computer entertainment/.test(haystack)) {
+        type = 'dualshock';
+        profile = 'DualShock';
+      } else if (/xbox|xinput/.test(haystack)) {
+        type = 'xbox';
+        profile = 'Xbox / XInput';
+      } else if (/8bitdo/.test(haystack)) {
+        type = '8bitdo';
+        profile = '8BitDo';
+      } else if (/gamesir/.test(haystack)) {
+        type = 'gamesir';
+        profile = 'GameSir';
+      } else if (/joy-con|pro controller|nintendo/.test(haystack)) {
+        type = 'nintendo';
+        profile = 'Nintendo';
+      }
+
+      const id = deviceId.toUpperCase();
+      const connection = id.startsWith('BTH') || id.includes('BLUETOOTH')
+        ? 'Bluetooth'
+        : id.startsWith('USB') || id.includes('VID_')
+          ? 'USB'
+          : 'Connected';
+
+      controllers.push({
+        name,
+        manufacturer,
+        pnpClass,
+        deviceId,
+        type,
+        profile,
+        connection
+      });
+    }
+
+    controllers.sort((a, b) => {
+      const score = (controller) => controller.type === 'generic' ? 1 : 0;
+      return score(a) - score(b) || a.name.localeCompare(b.name);
+    });
 
     return {
       ok: true,
@@ -512,7 +567,6 @@ async function detectControllers() {
     };
   }
 }
-
 
 async function hasWinget() {
   if (process.platform !== 'win32') return false;
@@ -742,6 +796,215 @@ async function prepareUsbWithBiosDrain(root, forceReplace = false) {
   }
 }
 
+
+
+function normalizeWindowsPath(value) {
+  return path.normalize(String(value || '')).replace(/[\\/]+$/, '').toLowerCase();
+}
+
+async function findPcsx2SettingsFile(documentsPath) {
+  const root = path.join(documentsPath, 'PCSX2');
+  const candidates = [
+    path.join(root, 'inis', 'PCSX2.ini'),
+    path.join(root, 'PCSX2.ini')
+  ];
+
+  for (const candidate of candidates) {
+    if (await exists(candidate)) return candidate;
+  }
+
+  return null;
+}
+
+function getIniSectionBounds(lines, sectionName) {
+  const wanted = sectionName.toLowerCase();
+  let start = -1;
+  let end = lines.length;
+
+  for (let index = 0; index < lines.length; index++) {
+    const match = lines[index].match(/^\s*\[([^\]]+)\]\s*$/);
+    if (!match) continue;
+
+    const section = match[1].trim().toLowerCase();
+    if (section === wanted) {
+      start = index;
+      continue;
+    }
+
+    if (start >= 0) {
+      end = index;
+      break;
+    }
+  }
+
+  return { start, end };
+}
+
+function getIniListValues(lines, sectionName, keys) {
+  const bounds = getIniSectionBounds(lines, sectionName);
+  if (bounds.start < 0) return [];
+
+  const wanted = new Set(keys.map((key) => key.toLowerCase()));
+  const values = [];
+
+  for (let index = bounds.start + 1; index < bounds.end; index++) {
+    const match = lines[index].match(/^\s*([^=;#]+?)\s*=\s*(.*?)\s*$/);
+    if (!match) continue;
+
+    const key = match[1].trim().toLowerCase();
+    if (wanted.has(key)) values.push({ key, value: match[2].trim(), index });
+  }
+
+  return values;
+}
+
+function addIniListValue(content, sectionName, key, value) {
+  const newline = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const existing = getIniListValues(lines, sectionName, ['Paths', 'RecursivePaths']);
+  const wantedPath = normalizeWindowsPath(value);
+
+  if (existing.some((entry) => normalizeWindowsPath(entry.value) === wantedPath)) {
+    return { content, changed: false, alreadyPresent: true };
+  }
+
+  let bounds = getIniSectionBounds(lines, sectionName);
+
+  if (bounds.start < 0) {
+    if (lines.length && lines[lines.length - 1].trim() !== '') lines.push('');
+    lines.push(`[${sectionName}]`);
+    lines.push(`${key} = ${value}`);
+  } else {
+    lines.splice(bounds.end, 0, `${key} = ${value}`);
+  }
+
+  return {
+    content: lines.join(newline),
+    changed: true,
+    alreadyPresent: false
+  };
+}
+
+async function isPcsx2Running() {
+  if (process.platform !== 'win32') return false;
+
+  try {
+    const { stdout } = await execFileAsync(
+      'tasklist.exe',
+      ['/FI', 'IMAGENAME eq pcsx2-qt.exe', '/NH'],
+      {
+        windowsHide: true,
+        timeout: 5000,
+        maxBuffer: 128 * 1024
+      }
+    );
+
+    return /pcsx2-qt\.exe/i.test(stdout);
+  } catch {
+    return false;
+  }
+}
+
+async function getPcsx2ConfigStatus(documentsPath) {
+  const gamesPath = path.join(documentsPath, 'Jeux PS2');
+  const settingsPath = await findPcsx2SettingsFile(documentsPath);
+
+  if (!settingsPath) {
+    return {
+      ok: true,
+      settingsFound: false,
+      settingsPath: null,
+      gamesPath,
+      gameListConfigured: false
+    };
+  }
+
+  try {
+    const content = await fs.readFile(settingsPath, 'utf8');
+    const lines = content.split(/\r?\n/);
+    const values = getIniListValues(lines, 'GameList', ['Paths', 'RecursivePaths']);
+    const wanted = normalizeWindowsPath(gamesPath);
+    const gameListConfigured = values.some((entry) => normalizeWindowsPath(entry.value) === wanted);
+
+    return {
+      ok: true,
+      settingsFound: true,
+      settingsPath,
+      gamesPath,
+      gameListConfigured
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      settingsFound: true,
+      settingsPath,
+      gamesPath,
+      gameListConfigured: false,
+      error: error?.message || 'Unable to inspect PCSX2 configuration.'
+    };
+  }
+}
+
+async function configurePcsx2GameLibrary(documentsPath) {
+  const gamesPath = path.join(documentsPath, 'Jeux PS2');
+  await fs.mkdir(gamesPath, { recursive: true });
+
+  if (await isPcsx2Running()) {
+    return {
+      ok: false,
+      pcsx2Running: true,
+      error: 'Close PCSX2 before EasySetup edits its configuration.'
+    };
+  }
+
+  const settingsPath = await findPcsx2SettingsFile(documentsPath);
+
+  if (!settingsPath) {
+    return {
+      ok: false,
+      needsFirstLaunch: true,
+      gamesPath,
+      error: 'PCSX2 settings were not found yet. Launch PCSX2 once, finish its first-run wizard, then rescan.'
+    };
+  }
+
+  try {
+    const original = await fs.readFile(settingsPath, 'utf8');
+    const patch = addIniListValue(original, 'GameList', 'RecursivePaths', gamesPath);
+
+    if (!patch.changed) {
+      return {
+        ok: true,
+        changed: false,
+        alreadyConfigured: true,
+        settingsPath,
+        gamesPath,
+        backupPath: null
+      };
+    }
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = `${settingsPath}.psem-backup-${stamp}`;
+    await fs.copyFile(settingsPath, backupPath);
+    await fs.writeFile(settingsPath, patch.content, 'utf8');
+
+    return {
+      ok: true,
+      changed: true,
+      alreadyConfigured: false,
+      settingsPath,
+      gamesPath,
+      backupPath
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      settingsPath,
+      gamesPath,
+      error: error?.message || 'Unable to update PCSX2 game-list configuration.'
+    };
+  }
+}
 
 function normalizePs1Model(fileName) {
   const match = String(fileName || '').match(/SCPH[-_ ]?(\d{3,5})/i);
@@ -1024,6 +1287,8 @@ module.exports = {
   hasWinget,
   installPcsx2WithWinget,
   prepareUsbWithBiosDrain,
+  getPcsx2ConfigStatus,
+  configurePcsx2GameLibrary,
   inspectPs1BiosFile,
   detectDuckStation,
   validateDuckStationExecutable,
