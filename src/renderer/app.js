@@ -12,7 +12,9 @@ const state = {
   workspace: { status: 'idle', result: null },
   biosCopyResult: null,
   gameFolderResult: null,
-  controllerScan: { status: 'idle', result: null }
+  controllerScan: { status: 'idle', result: null },
+  usbPrepareResult: null,
+  pcsx2Install: { status: 'idle', result: null }
 };
 
 const steps = [
@@ -265,6 +267,60 @@ function selectedUsbNotice() {
   `;
 }
 
+function renderUsbPreparation() {
+  if (!state.selectedUsbRoot) return '';
+
+  const drive = state.usbScan.result?.drives?.find((item) => item.root === state.selectedUsbRoot);
+  if (!drive) return '';
+
+  const result = state.usbPrepareResult;
+  let resultHtml = '';
+
+  if (result?.cancelled) {
+    resultHtml = '<div class="operation-result">USB preparation cancelled.</div>';
+  } else if (result?.ok) {
+    const release = result.release?.tag || result.release?.releaseName || 'latest official release';
+    resultHtml = `
+      <div class="operation-result good">
+        ✓ BIOSDrain ready on ${escapeHtml(state.selectedUsbRoot)}
+        <br><small>${escapeHtml(release)} · SHA-256 ${escapeHtml(String(result.sha256 || '').slice(0, 12))}…</small>
+      </div>
+    `;
+  } else if (result?.conflict) {
+    resultHtml = `
+      <div class="operation-result bad">
+        ⚠ A different biosdrain.elf already exists. Nothing was overwritten.
+        <div class="inline-actions">
+          <button class="button ghost compact" data-action="replace-biosdrain">Back up + replace with official latest</button>
+        </div>
+      </div>
+    `;
+  } else if (result?.error) {
+    resultHtml = `<div class="operation-result bad">⚠ ${escapeHtml(result.error)}</div>`;
+  }
+
+  return `
+    <div class="usb-prep-card">
+      <div class="setup-card-head">
+        <div>
+          <span class="eyebrow">OPTIONAL AUTOMATION</span>
+          <strong>Put BIOSDrain on this USB for me</strong>
+        </div>
+        ${statusPill(drive.hasBiosDrain ? 'FOUND' : 'READY TO PREP', drive.hasBiosDrain ? 'success' : 'neutral')}
+      </div>
+      <p>EasySetup downloads <code>biosdrain.elf</code> from the official BIOSDrain GitHub release and writes only that file to the selected FAT32 USB drive.</p>
+      <div class="inline-actions">
+        <button class="button primary compact" data-action="prepare-usb-biosdrain" ${drive.fat32Ready ? '' : 'disabled'}>
+          ${drive.hasBiosDrain ? 'Verify / update BIOSDrain' : 'Download + copy BIOSDrain'}
+        </button>
+        <button class="button ghost compact" data-action="open-biosdrain">Open official release ↗</button>
+      </div>
+      ${!drive.fat32Ready ? '<div class="operation-result bad">This drive is not FAT32, so EasySetup will not write to it.</div>' : ''}
+      ${resultHtml}
+    </div>
+  `;
+}
+
 function getDetectedPcsx2Path() {
   return state.pcsx2Path || state.pcsx2Scan.result?.installations?.[0]?.path || '';
 }
@@ -297,16 +353,28 @@ function renderPcsx2Detection() {
     `;
   }
 
+  const wingetAvailable = Boolean(state.pcsx2Scan.result?.wingetAvailable);
+  const installResult = state.pcsx2Install.result;
+  const installStatus = state.pcsx2Install.status === 'installing'
+    ? '<div class="operation-result">Installing PCSX2 with WinGet… this can take a moment.</div>'
+    : installResult?.ok
+      ? '<div class="operation-result good">✓ WinGet finished. Rescanning for PCSX2…</div>'
+      : installResult?.error && !installResult?.cancelled
+        ? `<div class="operation-result bad">⚠ ${escapeHtml(installResult.error)}</div>`
+        : '';
+
   return `
     <div class="setup-tile attention">
       <div class="tile-icon">!</div>
       <div class="tile-main">
         <div class="tile-title"><strong>PCSX2 not detected</strong>${statusPill('ACTION NEEDED', 'warning')}</div>
         <span>If you use a portable build, EasySetup may not know where you extracted it.</span>
+        ${installStatus}
       </div>
       <div class="tile-actions">
+        ${wingetAvailable ? actionButton('Install with WinGet', 'install-pcsx2-winget', 'primary', 'compact') : ''}
         ${actionButton('Locate', 'locate-pcsx2', 'ghost', 'compact')}
-        ${actionButton('Download', 'open-pcsx2', 'ghost', 'compact')}
+        ${actionButton('Official download', 'open-pcsx2', 'ghost', 'compact')}
       </div>
     </div>
   `;
@@ -436,8 +504,8 @@ const views = {
     html: `
       <div class="hero">
         <div>
-          <div class="kicker">PS2-EM EasySetup · v0.3</div>
-          <h2>From real PS2 to PCSX2.<br><span class="gradient-text">Now it actually prepares the PC too.</span></h2>
+          <div class="kicker">PS2-EM EasySetup · v0.4</div>
+          <h2>From real PS2 to PCSX2.<br><span class="gradient-text">Now it can prep the USB and install PCSX2 too.</span></h2>
           <p class="lead">Validate the BIOS, inspect the USB drive, detect PCSX2, prepare its folders, and check your controllers from one guided Windows utility.</p>
         </div>
         <div class="hero-orbit" aria-hidden="true">
@@ -449,8 +517,8 @@ const views = {
         </div>
       </div>
       <div class="feature-grid">
-        <div class="feature"><strong>BIOS + USB</strong><span>Real validation and removable-drive inspection from v0.2.</span></div>
-        <div class="feature"><strong>PCSX2 setup</strong><span>Detect, locate, launch, copy BIOS and create the game library.</span></div>
+        <div class="feature"><strong>BIOS + USB</strong><span>Validate the dump and prepare a FAT32 USB with official BIOSDrain.</span></div>
+        <div class="feature"><strong>PCSX2 setup</strong><span>Detect, install with WinGet, launch, copy BIOS and create the game library.</span></div>
         <div class="feature"><strong>Controller scan</strong><span>See what Windows exposes before opening PCSX2 mapping.</span></div>
       </div>
     `,
@@ -520,6 +588,7 @@ const views = {
       </div>
       <div class="drive-list">${renderUsbDrives()}</div>
       ${selectedUsbNotice()}
+      ${renderUsbPreparation()}
       <p class="small">Detection is read-only. If a drive needs FAT32/MBR preparation, the wizard will guide you later instead of formatting anything automatically.</p>
     `,
     next: { label: 'Continue to memory-card check', onClick: () => go('fmcb-check') }
@@ -836,7 +905,26 @@ async function handleAction(action, dataset = {}) {
 
   if (action === 'select-usb') {
     state.selectedUsbRoot = dataset.root || '';
+    state.usbPrepareResult = null;
     render();
+    return;
+  }
+
+  if (action === 'prepare-usb-biosdrain') {
+    if (!state.selectedUsbRoot) return;
+    state.usbPrepareResult = { pending: true };
+    render();
+    const result = await window.easySetup.prepareUsbBiosDrain(state.selectedUsbRoot, false);
+    state.usbPrepareResult = result;
+    await refreshUsb();
+    return;
+  }
+
+  if (action === 'replace-biosdrain') {
+    if (!state.selectedUsbRoot) return;
+    const result = await window.easySetup.prepareUsbBiosDrain(state.selectedUsbRoot, true);
+    state.usbPrepareResult = result;
+    await refreshUsb();
     return;
   }
 
@@ -847,6 +935,20 @@ async function handleAction(action, dataset = {}) {
 
   if (action === 'refresh-pcsx2') {
     await refreshPcsx2Setup();
+    return;
+  }
+
+  if (action === 'install-pcsx2-winget') {
+    state.pcsx2Install = { status: 'installing', result: null };
+    render();
+    const result = await window.easySetup.installPcsx2Winget();
+    state.pcsx2Install = { status: 'done', result };
+
+    if (result?.ok) {
+      await refreshPcsx2Setup();
+    } else {
+      render();
+    }
     return;
   }
 
