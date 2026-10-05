@@ -10,7 +10,7 @@
     "start": "electron .",
     "dev": "electron .",
     "check": "node --check src/main/system.js && node --check src/main/main.js && node --check src/main/preload.js && node --check src/renderer/app.js",
-    "build": "electron-builder --win nsis",
+    "build": "electron-builder --win nsis --publish never",
     "build:dir": "electron-builder --dir"
   },
   "devDependencies": {
