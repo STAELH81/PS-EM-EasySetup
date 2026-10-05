@@ -967,12 +967,36 @@ async function getPcsx2ConfigStatus(documentsPath) {
     const wanted = normalizeWindowsPath(gamesPath);
     const gameListConfigured = values.some((entry) => normalizeWindowsPath(entry.value) === wanted);
 
+    const biosPath = path.join(documentsPath, 'PCSX2', 'bios');
+    const biosScan = await inspectBiosFolder(biosPath);
+    const biosName = biosScan?.best?.files?.rom0?.name || null;
+    const configuredBiosFolder = getIniValue(lines, 'Folders', 'Bios');
+    const configuredBiosName = getIniValue(lines, 'Filenames', 'BIOS');
+
+    const biosFolderConfigured = Boolean(
+      biosName &&
+      configuredBiosFolder &&
+      normalizeWindowsPath(configuredBiosFolder) === normalizeWindowsPath(biosPath)
+    );
+
+    const biosSelectionConfigured = Boolean(
+      biosName &&
+      configuredBiosName &&
+      configuredBiosName.toLowerCase() === biosName.toLowerCase()
+    );
+
     return {
       ok: true,
       settingsFound: true,
       settingsPath,
       gamesPath,
-      gameListConfigured
+      gameListConfigured,
+      biosPath,
+      biosName,
+      configuredBiosFolder,
+      configuredBiosName,
+      biosFolderConfigured,
+      biosSelectionConfigured
     };
   } catch (error) {
     return {
