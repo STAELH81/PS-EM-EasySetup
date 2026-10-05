@@ -318,6 +318,10 @@ async function getWorkspaceStatus(documentsPath) {
   const pcsx2Documents = path.join(documentsPath, 'PCSX2');
   const biosPath = path.join(pcsx2Documents, 'bios');
 
+  const biosExists = await exists(biosPath);
+  const biosScan = biosExists ? await inspectBiosFolder(biosPath) : null;
+  const biosReady = Boolean(biosScan?.best?.validForPcsx2);
+
   return {
     ok: true,
     documentsPath,
@@ -326,7 +330,9 @@ async function getWorkspaceStatus(documentsPath) {
     pcsx2Documents,
     pcsx2DocumentsExists: await exists(pcsx2Documents),
     biosPath,
-    biosExists: await exists(biosPath)
+    biosExists,
+    biosReady,
+    biosModel: biosScan?.best?.consoleModel || null
   };
 }
 
