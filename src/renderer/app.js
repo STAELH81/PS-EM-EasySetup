@@ -45,7 +45,7 @@ const officialLinks = {
   pcsx2: 'https://pcsx2.net/',
   biosdrain: 'https://github.com/F0bes/biosdrain/releases/latest',
   freedvdboot: 'https://github.com/CTurt/FreeDVDBoot',
-  duckstation: 'https://github.com/stenzek/duckstation/releases/tag/latest'
+  duckstation: 'https://github.com/stenzek/duckstation/releases/latest'
 };
 
 function tr(value) {
@@ -1189,10 +1189,10 @@ async function refreshUsb() {
 async function refreshPcsx2Setup() {
   state.pcsx2Scan = { status: 'scanning', result: null };
   state.workspace = { status: 'scanning', result: null };
+  state.pcsx2Config = { status: 'scanning', result: null };
   render();
 
   try {
-    state.pcsx2Config = { status: 'scanning', result: null };
 
     const [pcsx2Result, workspaceResult, configResult] = await Promise.all([
       window.easySetup.detectPcsx2(),
@@ -1294,7 +1294,7 @@ async function handleAction(action, dataset = {}) {
   if (action === 'select-ps1-bios') {
     state.ps1Bios = { loading: true };
     render();
-    const result = await window.easySetup.selectPs1Bios();
+    const result = await window.easySetup.selectPs1Bios(state.language);
     state.ps1Bios = result || null;
     render();
     return;
@@ -1306,7 +1306,7 @@ async function handleAction(action, dataset = {}) {
   }
 
   if (action === 'locate-duckstation') {
-    const result = await window.easySetup.selectDuckStationExe();
+    const result = await window.easySetup.selectDuckStationExe(state.language);
     if (result?.ok) {
       state.duckStationPath = result.path;
       render();
@@ -1344,7 +1344,7 @@ async function handleAction(action, dataset = {}) {
   }
 
   if (action === 'select-bios') {
-    const folder = await window.easySetup.selectFolder('Select your PS2 BIOS folder');
+    const folder = await window.easySetup.selectFolder(tr('Select your PS2 BIOS folder'));
     if (folder) await scanBiosFolder(folder);
     return;
   }
@@ -1365,7 +1365,7 @@ async function handleAction(action, dataset = {}) {
     if (!state.selectedUsbRoot) return;
     state.usbPrepareResult = { pending: true };
     render();
-    const result = await window.easySetup.prepareUsbBiosDrain(state.selectedUsbRoot, false);
+    const result = await window.easySetup.prepareUsbBiosDrain(state.selectedUsbRoot, false, state.language);
     state.usbPrepareResult = result;
     await refreshUsb();
     return;
@@ -1373,7 +1373,7 @@ async function handleAction(action, dataset = {}) {
 
   if (action === 'replace-biosdrain') {
     if (!state.selectedUsbRoot) return;
-    const result = await window.easySetup.prepareUsbBiosDrain(state.selectedUsbRoot, true);
+    const result = await window.easySetup.prepareUsbBiosDrain(state.selectedUsbRoot, true, state.language);
     state.usbPrepareResult = result;
     await refreshUsb();
     return;
@@ -1395,7 +1395,7 @@ async function handleAction(action, dataset = {}) {
   }
 
   if (action === 'configure-pcsx2-library') {
-    state.pcsx2ConfigResult = await window.easySetup.configurePcsx2GameLibrary();
+    state.pcsx2ConfigResult = await window.easySetup.configurePcsx2GameLibrary(state.language);
     await refreshPcsx2Config();
     return;
   }
@@ -1403,7 +1403,7 @@ async function handleAction(action, dataset = {}) {
   if (action === 'install-pcsx2-winget') {
     state.pcsx2Install = { status: 'installing', result: null };
     render();
-    const result = await window.easySetup.installPcsx2Winget();
+    const result = await window.easySetup.installPcsx2Winget(state.language);
     state.pcsx2Install = { status: 'done', result };
 
     if (result?.ok) {
@@ -1415,7 +1415,7 @@ async function handleAction(action, dataset = {}) {
   }
 
   if (action === 'locate-pcsx2') {
-    const result = await window.easySetup.selectPcsx2Exe();
+    const result = await window.easySetup.selectPcsx2Exe(state.language);
     if (result?.ok) {
       state.pcsx2Path = result.path;
       render();
