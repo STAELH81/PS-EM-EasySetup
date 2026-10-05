@@ -2,6 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const crypto = require('crypto');
 
 const execFileAsync = promisify(execFile);
 
@@ -289,7 +290,8 @@ async function detectPcsx2() {
     ok: true,
     supported: true,
     found: installations.length > 0,
-    installations
+    installations,
+    wingetAvailable: await hasWinget()
   };
 }
 
@@ -475,6 +477,235 @@ async function detectControllers() {
   }
 }
 
+
+async function hasWinget() {
+  if (process.platform !== 'win32') return false;
+
+  try {
+    await execFileAsync('where.exe', ['winget.exe'], {
+      windowsHide: true,
+      timeout: 5000,
+      maxBuffer: 64 * 1024
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function installPcsx2WithWinget() {
+  if (process.platform !== 'win32') {
+    return {
+      ok: false,
+      error: 'WinGet installation is only available on Windows.'
+    };
+  }
+
+  if (!(await hasWinget())) {
+    return {
+      ok: false,
+      error: 'WinGet was not found on this Windows installation.'
+    };
+  }
+
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      'winget.exe',
+      [
+        'install',
+        '--id', 'PCSX2Team.PCSX2',
+        '--exact',
+        '--source', 'winget',
+        '--accept-source-agreements',
+        '--accept-package-agreements'
+      ],
+      {
+        windowsHide: false,
+        timeout: 10 * 60 * 1000,
+        maxBuffer: 4 * 1024 * 1024
+      }
+    );
+
+    return {
+      ok: true,
+      stdout: stdout || '',
+      stderr: stderr || ''
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error?.message || 'WinGet could not install PCSX2.',
+      stdout: error?.stdout || '',
+      stderr: error?.stderr || ''
+    };
+  }
+}
+
+async function sha256File(filePath) {
+  const bytes = await fs.readFile(filePath);
+  return crypto.createHash('sha256').update(bytes).digest('hex');
+}
+
+async function fetchLatestBiosDrainAsset() {
+  const response = await fetch('https://api.github.com/repos/F0bes/biosdrain/releases/latest', {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'PS2-EM-EasySetup'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub returned HTTP ${response.status} while checking BIOSDrain.`);
+  }
+
+  const release = await response.json();
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const asset = assets.find((item) => {
+    const name = String(item?.name || '').toLowerCase();
+    return name === 'biosdrain.elf' || (name.includes('biosdrain') && name.endsWith('.elf'));
+  });
+
+  if (!asset?.browser_download_url) {
+    throw new Error('The latest BIOSDrain release does not contain a biosdrain.elf asset.');
+  }
+
+  return {
+    releaseName: release.name || release.tag_name || 'Latest release',
+    tag: release.tag_name || '',
+    assetName: asset.name,
+    downloadUrl: asset.browser_download_url,
+    size: Number(asset.size) || 0
+  };
+}
+
+async function downloadBiosDrainBytes() {
+  const asset = await fetchLatestBiosDrainAsset();
+  const response = await fetch(asset.downloadUrl, {
+    headers: {
+      'User-Agent': 'PS2-EM-EasySetup'
+    },
+    redirect: 'follow'
+  });
+
+  if (!response.ok) {
+    throw new Error(`BIOSDrain download returned HTTP ${response.status}.`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const bytes = Buffer.from(arrayBuffer);
+
+  if (!bytes.length || bytes.length > 16 * 1024 * 1024) {
+    throw new Error('Downloaded BIOSDrain file has an unexpected size.');
+  }
+
+  return {
+    asset,
+    bytes,
+    sha256: crypto.createHash('sha256').update(bytes).digest('hex')
+  };
+}
+
+async function prepareUsbWithBiosDrain(root, forceReplace = false) {
+  if (process.platform !== 'win32') {
+    return {
+      ok: false,
+      error: 'Automatic USB preparation is currently available on Windows only.'
+    };
+  }
+
+  const drivesResult = await detectUsbDrives();
+  if (!drivesResult.ok) {
+    return {
+      ok: false,
+      error: drivesResult.error || 'Could not verify the selected USB drive.'
+    };
+  }
+
+  const selected = drivesResult.drives.find(
+    (drive) => drive.root.toLowerCase() === String(root || '').toLowerCase()
+  );
+
+  if (!selected) {
+    return {
+      ok: false,
+      error: 'The selected path is not currently detected as a removable USB drive.'
+    };
+  }
+
+  if (!selected.fat32Ready) {
+    return {
+      ok: false,
+      needsFat32: true,
+      error: 'This USB drive is not FAT32. EasySetup will not format it automatically.'
+    };
+  }
+
+  const target = path.join(selected.root, 'biosdrain.elf');
+
+  try {
+    const download = await downloadBiosDrainBytes();
+
+    if (await exists(target)) {
+      const currentHash = await sha256File(target);
+
+      if (currentHash === download.sha256) {
+        return {
+          ok: true,
+          alreadyReady: true,
+          target,
+          release: download.asset,
+          sha256: download.sha256
+        };
+      }
+
+      if (!forceReplace) {
+        return {
+          ok: false,
+          conflict: true,
+          target,
+          currentSha256: currentHash,
+          latestSha256: download.sha256,
+          release: download.asset,
+          error: 'biosdrain.elf already exists but differs from the latest official release. EasySetup did not overwrite it.'
+        };
+      }
+    }
+
+    const temporaryTarget = path.join(selected.root, 'biosdrain.elf.download');
+    await fs.writeFile(temporaryTarget, download.bytes);
+
+    let backup = null;
+    if (await exists(target)) {
+      backup = path.join(selected.root, 'biosdrain.elf.bak');
+      await fs.copyFile(target, backup);
+      await fs.rm(target, { force: true });
+    }
+
+    await fs.rename(temporaryTarget, target);
+
+    return {
+      ok: true,
+      alreadyReady: false,
+      target,
+      backup,
+      release: download.asset,
+      sha256: download.sha256
+    };
+  } catch (error) {
+    try {
+      await fs.rm(path.join(selected.root, 'biosdrain.elf.download'), { force: true });
+    } catch {
+      // Best-effort cleanup.
+    }
+
+    return {
+      ok: false,
+      target,
+      error: error?.message || 'Unable to prepare BIOSDrain on the USB drive.'
+    };
+  }
+}
+
 module.exports = {
   inspectBiosFolder,
   detectUsbDrives,
@@ -483,5 +714,8 @@ module.exports = {
   getWorkspaceStatus,
   createGameFolder,
   copyBiosToPcsx2,
-  detectControllers
+  detectControllers,
+  hasWinget,
+  installPcsx2WithWinget,
+  prepareUsbWithBiosDrain
 };
