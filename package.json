@@ -17,9 +17,7 @@
   },
   "devDependencies": {
     "electron": "^42.11.4",
-    "electron-builder": "26.15.3",
-    "sharp": "^0.34.4",
-    "png-to-ico": "^3.0.1"
+    "electron-builder": "26.15.3"
   },
   "overrides": {
     "yauzl": "^3.3.1"
