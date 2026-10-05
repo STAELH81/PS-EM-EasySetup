@@ -166,9 +166,11 @@ async function detectUsbDrives() {
   ].join('\\n');
 
   try {
+    const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
+
     const { stdout } = await execFileAsync(
       'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      ['-NoProfile', '-NonInteractive', '-EncodedCommand', encodedScript],
       {
         windowsHide: true,
         timeout: 12000,
